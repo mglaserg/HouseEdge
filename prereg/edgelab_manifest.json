@@ -1,0 +1,19 @@
+{
+  "experiment_id": "HOUSEEDGE-LP-001",
+  "family": "HouseEdge LP",
+  "primary_trial_count": 1,
+  "primary_outcome": "annualized_net_discrete_hedged_lp_return",
+  "decision_rule": "lower_95pct_stationary_bootstrap_ci_gt_0",
+  "diagnostics_not_primary_trials": [
+    "30s_60s_300s_markouts",
+    "shuffled_direction_null",
+    "reference_time_shift_sensitivity",
+    "passive_capacity_sweep"
+  ],
+  "untested_future_variants": [
+    "alternative_delta_bands",
+    "alternative_lp_ranges",
+    "additional_pools",
+    "alternative_primary_reference_venues"
+  ]
+}

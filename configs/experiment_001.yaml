@@ -1,0 +1,68 @@
+experiment_id: HOUSEEDGE-LP-001
+status: FROZEN_PRIMARY_SPEC
+registered_at: 2026-09-03
+
+thesis:
+  counterparty: "Liquidity-demanding traders who choose the AMM route."
+  mechanism: "LPs earn swap fees for immediacy while losing to adverse selection and inventory rebalancing."
+  falsifier: "Net discrete-delta-hedged LP edge is not reliably positive after protocol fee share, hedge costs/funding, and operating costs, or the result is unstable to reference-price alignment diagnostics."
+
+chain:
+  name: base
+  chain_id: 8453
+  rpc_env: BASE_RPC_URL
+  default_rpc: https://mainnet.base.org
+  uniswap_v3_factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"
+
+pool:
+  token0_symbol: WETH
+  token0_address: "0x4200000000000000000000000000000000000006"
+  token0_decimals: 18
+  token1_symbol: USDC
+  token1_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  token1_decimals: 6
+  fee_tier_pips: 500
+  pool_address: null
+  # Conservative primary assumption for a protocol-fee-enabled v3 5bp pool.
+  # Confirm actual pool configuration before interpreting a GO decision.
+  lp_share_of_swap_fee: 0.75
+
+sample:
+  days: 30
+  primary_reference: composite
+  markout_horizons_seconds: [30, 60, 300]
+  max_reference_age_seconds: 3.0
+  primary_alignment_tolerance_seconds: 3.0
+  alignment_shift_diagnostics_seconds: [-10, -5, -2, 0, 2, 5, 10]
+
+position:
+  initial_capital_usd: 10000.0
+  lower_multiplier: 0.80
+  upper_multiplier: 1.20
+  boundary_cross_fee_policy: zero
+
+hedge:
+  instrument: ETH-USD_PERP_PROXY
+  # Primary rule is frozen: hedge only when dollar delta error exceeds this band,
+  # then trade back to the nearest edge of the band (not to zero).
+  delta_band_usd: 250.0
+  taker_cost_bps: 2.0
+  annualized_funding_rate: 0.0
+  fixed_operating_cost_usd: 2.0
+
+inference:
+  stationary_bootstrap_reps: 2000
+  stationary_bootstrap_mean_block_swaps: 100
+  confidence_level: 0.95
+  primary_trial_count: 1
+  research_go_rule: lower_ci_annualized_net_return_gt_0
+  production_hurdle_annualized_net_return: 0.05
+  production_hurdle_hedged_sharpe: 1.0
+
+capacity:
+  capital_usd: [1000, 3000, 10000, 30000, 100000, 300000]
+  label: passive_counterfactual_capacity
+
+variants:
+  enabled_for_primary_decision: false
+  note: "Alternative hedge bands, ranges, pools, and reference venues are future registered experiments. Markout horizons, nulls, alignment shifts, and capacity are diagnostics, not primary trials."
