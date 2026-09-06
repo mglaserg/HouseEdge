@@ -1,157 +1,179 @@
-# HouseEdge LP v0.1.0
+# HouseEdge LP v0.1.5
 
-A **research-first, preregistered liquidity-provision lab** for HouseEdge. This bundle deliberately does not contain wallet keys, transaction signing, LP minting, or live execution.
+HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-The primary Experiment 001 question is:
+v0.1.5 is a governance/calibration patch over the v0.1.0 scaffold. It deliberately does **not** open Experiment 001. Its job is to make the eventual Base / Uniswap v3 WETH-USDC experiment falsifiable before primary LP P&L is inspected.
 
-> Does a passive Uniswap v3 WETH/USDC LP position on Base retain a reliably positive return after discrete delta hedging, LP protocol-fee share, hedge trading costs/funding, and operating costs?
-
-## Architecture
+## Core rule
 
 ```text
-Base / Uniswap logs ──┐
-                      ├─> local Parquet ─> Experiment runner ─> runs/<id>/
-CEX reference mids ───┘                         │
-                                                └─> read-only Streamlit dashboard
+Counterparty -> Compensation -> Costs -> Falsifier -> EdgeLab -> Build
 ```
 
-The dashboard is **separate from running**. The research runner writes artifacts to disk; Streamlit only reads them.
+A KILL is a successful research outcome. A measurement failure is VOID, not KILL. Range optimization cannot rescue a primary KILL.
 
-## Experiment layers
+## What changed in v0.1.5
 
-1. **Gate 0** — cheap active-capital fee-vs-vol screen.
-2. **Reference alignment lab** — quantify timestamp coverage and sensitivity.
-3. **Flow quality** — 30s/60s/5m markouts plus shuffled-direction null. Diagnostic only.
-4. **Discrete delta-hedged replay** — primary GO/KILL statistic.
-5. **Stationary bootstrap** — lower 95% CI must exceed zero for Research GO.
-6. **Capacity sweep** — passive counterfactual only.
+- v0.1 Experiment 001 decision spec is superseded; the new spec starts as `CALIBRATION_REQUIRED`.
+- Prospective power analysis is required before primary dates are frozen.
+- ETH realized-volatility regime coverage is checked before the primary window is chosen.
+- Gate 0 now compares fee capture and predictable LVR on the **same hypothetical concentrated-liquidity position** and uses mean realized variance `E[sigma^2]`.
+- Uniswap v3 `SetFeeProtocol` events are archived and LP protocol-fee share can vary swap-by-swap.
+- Short-lived/JIT liquidity has an explicit early diagnostic.
+- Primary CEX alignment is frozen to the **last non-stale bid/ask midpoint at or before the Base block timestamp**.
+- Primary hedge policy is 5% of LP NAV residual ETH delta, rebalance to zero; actual historical funding is required for a real run.
+- Primary performance is **excess over the precommitted on-chain cash benchmark** (Aave v3 Base USDC), not raw return and not “risk-free” return.
+- GO requires statistical significance, >=5% annualized excess return, and >=$10,000/year passive-counterfactual economic capacity.
+- VOID criteria and micro-live fee-reconciliation threshold are explicit.
+- Prediction files are SHA-256 sealed before the primary replay.
+- Every post-unblind rerun is automatically counted as a new outcome look/trial.
 
-Range optimization, ML, and live execution are intentionally postponed until a strong GO.
+## Install
 
-## Setup (Windows / uv)
+Python 3.11+ is supported. The project is designed around `uv`.
 
-```powershell
-cd houseedge
-uv venv
-.venv\Scripts\activate
-uv pip install -e ".[dev]"
-```
-
-or:
-
-```powershell
+```bash
 uv sync --extra dev
 ```
 
-## 1. Validate the full plumbing immediately
+## v0.15 workflow
 
-```powershell
-houseedge demo
-streamlit run dashboard/app.py
-```
+### 1. Discover the Base WETH/USDC 5 bp pool
 
-The demo generates synthetic swaps and quotes and runs the complete analysis. **Its P&L is not evidence.** It exists to catch code/plumbing bugs before real data touches the experiment.
-
-## 2. Freeze Experiment 001 before real results
-
-Review `configs/experiment_001.yaml` and `prereg/experiment_001.md`. Once you want that exact spec to be the primary test:
-
-```powershell
-houseedge freeze
-```
-
-This appends a SHA-256 spec hash to `data/prereg_registry.jsonl`. A later edit under the same experiment ID causes the real-data runner to stop. The included `prereg/edgelab_manifest.json` is the handoff manifest for the canonical EdgeLab registry; HouseEdge does not pretend to know or replace your EdgeLab package API.
-
-## 3. Gate 0
-
-Example only:
-
-```powershell
-houseedge gate0 --annualized-vol 0.60 --daily-volume-usd 25000000 --active-capital-usd 100000000 --lp-fee-bps 3.75
-```
-
-`active_capital_usd`, not total pool TVL, is the intended denominator. Gate 0 uses the frictionless `sigma^2/8` LVR benchmark as a conservative screen, not as calibrated realized LVR.
-
-## 4. Find the configured WETH/USDC 5bp pool
-
-```powershell
+```bash
 houseedge discover-pool
 ```
 
-The Base public RPC is useful for testing but rate-limited. For month-scale event pulls set an archive-capable provider:
+### 2. Fetch outcome-blind candidate-window pool events
 
-```powershell
-$env:BASE_RPC_URL="https://YOUR_BASE_RPC"
+Use an archive/log-capable Base RPC for historical work:
+
+```bash
+export BASE_RPC_URL="https://YOUR_BASE_RPC"
+houseedge fetch-events \
+  --from-block 12345678 \
+  --to-block 12445678 \
+  --output data/raw/candidate_events.parquet
 ```
 
-## 5. Pull exact on-chain event order
+`fetch-events` now archives `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` in exact block / transaction / log order. It also reads `slot0.feeProtocol` at the block immediately preceding the requested window and attaches the historically correct LP fee fraction to each swap.
 
-```powershell
-houseedge fetch-events --from-block 12345678 --to-block 12445678
+### 3. Freeze calibration-only assumptions and prepare inputs
+
+Before running power, choose the ETH perpetual hedge venue and its expected funding interval in `configs/experiment_001.yaml`, and fill the outcome-blind Gate-0 variable/fixed cost assumptions. These affect the noise/economic hurdle and are bound into the calibration hash.
+
+`houseedge calibrate-design` then expects:
+
+- a **separate calibration** return-increment series with `excess_return_inc`, used only for dependence/noise and power;
+- calibration ETH reference prices;
+- candidate-window ETH reference prices;
+- candidate-window pool events;
+- the candidate-window Aave v3 Base USDC APY series (`timestamp,apy`).
+
+The primary LP hedged P&L must not be inspected during this stage.
+
+```bash
+houseedge calibrate-design \
+  --calibration-increments data/calibration/excess_increments.parquet \
+  --calibration-reference data/calibration/eth_reference.parquet \
+  --candidate-reference data/candidate/eth_reference.parquet \
+  --candidate-events data/raw/candidate_events.parquet \
+  --benchmark-rates data/candidate/aave_base_usdc_apy.parquet \
+  --output runs/v015_calibration
 ```
 
-Swap, Mint, and Burn logs are saved in block / transaction / log order. The replay uses the Swap event's active-liquidity value; Mint/Burn are archived so later exact tick-state reconstruction/JIT studies do not require a re-download.
+The report includes:
 
-## 6. Reference prices
+- statistical power at a true +5% annual excess edge;
+- full-GO power at a larger material alternative (default +8% because a point-estimate hurdle at +5% makes full-GO power at a true +5% edge structurally <=~50%);
+- low/high realized-variance regime coverage;
+- same-basis Gate-0 fee/LVR economics;
+- JIT/short-lived-liquidity diagnostics;
+- minimum-viable-size information;
+- passive-counterfactual capacity prize.
 
-For prospective data collection:
+A calibration `PASS` is permission to **freeze a test**, not evidence that LP edge exists.
 
-```powershell
-houseedge collect-reference --seconds 3600
+### 4. Fill only the selected primary dates
+
+Only after calibration passes:
+
+- copy the exact candidate-window `start` / `end` emitted by the passing calibration report into `sample.start` / `sample.end`;
+- set `status: READY_TO_FREEZE`.
+
+Freeze verifies that all other calibration assumptions still hash to the passing report. Changing the hedge venue, costs, power settings, regime rules, benchmark, or capacity hurdle requires a new calibration run.
+
+### 5. Seal the prior prediction
+
+Fill `prereg/experiment_001_prediction.json` with the expected point estimate, CI, capacity and predicted decision, then:
+
+```bash
+houseedge seal-prediction
 ```
 
-This records public Coinbase `ETH-USD` ticker bid/ask/mid updates. For a historical experiment, provide a tick-level CSV or Parquet with:
+### 6. Freeze Experiment 001
+
+```bash
+houseedge freeze \
+  --calibration-report runs/v015_calibration/calibration_report.json
+```
+
+Freeze refuses to proceed if calibration did not pass, the spec is not `READY_TO_FREEZE`, or the prediction hash is not in the local prediction registry.
+
+## Eventual v0.2 primary run
+
+v0.1.5 prepares the governance, but **v0.2 still owes exact replay-state reconciliation and complete real-data funding/cost ingestion**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
+
+The frozen outcome will use:
 
 ```text
-timestamp,mid,source
-2026-08-01T00:00:00.123Z,3521.14,composite
-...
+Net discrete-delta-hedged LP return
+- time-matched on-chain cash benchmark
+= primary excess return
 ```
 
-or `timestamp,bid,ask,source`. Do **not** substitute one-minute candles and then interpret a 30-second markout as precise.
-
-The preregistered primary reference is labeled `composite`: build that file externally from the venues you approve, then feed it to HouseEdge. Venue-specific series belong in sensitivity/future variants rather than silently changing the primary reference.
-
-## 7. Run Experiment 001
-
-```powershell
-houseedge run --swaps data/raw/weth_usdc_events.parquet --reference data/reference/composite_eth_usd.parquet
-```
-
-Outputs include:
-
-- `summary.json`
-- `aligned_swaps.parquet`
-- `alignment_sensitivity.csv`
-- `markouts.parquet`
-- `markout_nulls.csv`
-- `hedged_replay.parquet`
-- `bootstrap.parquet`
-- `capacity.csv`
-
-Research GO is mechanically:
+GO requires all of:
 
 ```text
-lower 95% stationary-bootstrap CI of annualized net hedged LP return > 0
+lower 95% stationary-bootstrap CI of annualized excess > 0
+point estimate annualized excess >= 5%
+passive capacity supports >= $10,000/year expected excess profit
+micro-live fee reconciliation passes
+all VOID criteria pass
 ```
 
-Nothing in the markout charts can override that rule.
+Otherwise the result is KILL or VOID as appropriate.
 
-## Important implementation choices
+## Markouts
 
-- **Raw Uniswap liquidity units:** hypothetical LP liquidity is computed in raw-token coordinates, so `L_ours` is comparable to the pool's on-chain active `liquidity`.
-- **Protocol fees:** Experiment 001 conservatively assumes LPs retain 75% of the 5bp fee. Confirm the actual selected pool configuration before interpreting a GO.
-- **Boundary crossing:** if a swap moves the hypothetical position across an in/out-of-range boundary, V0 assigns zero fee to that swap rather than overclaiming partial-step fees. A later exact swap-step replay can improve this if Experiment 001 survives.
-- **Markouts:** information and execution markouts diagnose toxicity. They do not equal LVR.
-- **Hedge:** fixed $250 no-trade dollar-delta band; trade back only to the band edge. No tuning inside Experiment 001.
-- **Capacity:** the sweep assumes the historical tape is unchanged by our added liquidity. It is labeled passive counterfactual capacity for that reason.
+30s / 60s / 5m markouts remain **flow-quality diagnostics only**. They are not LVR and are never subtracted from fees to form the primary P&L statistic.
 
-## What V0.1 intentionally does not claim
+The primary reference alignment is backward-only: no quote after the Base block timestamp can be used as the contemporaneous fair-price observation.
 
-Exact fee partition on a swap that crosses our range boundary requires step-by-step Uniswap swap reconstruction across initialized ticks. Rather than smuggling an approximation into the primary statistic, V0.1 assigns zero fee to those boundary-crossing swaps. If the edge cannot survive that conservative treatment, there is no reason to spend the engineering time on exact crossing reconstruction.
+## JIT liquidity
 
-Similarly, historical block timestamps do not identify sub-block transaction wall-clock time. The alignment diagnostics are therefore part of the measurement validity check, not cosmetic charts.
+`research/jit.py` FIFO-matches short-lived Mint/Burn lots by owner/range and measures overlap with swaps. This is intentionally labeled a diagnostic because pool events alone do not uniquely identify all economic NFT positions.
 
-## Safety
+## Protocol fees
 
-There are no private-key fields, signing methods, wallet connectors, or transaction-broadcast methods in this repository. Live LP execution is a later HouseEdge phase and should remain a separate service from the dashboard.
+Do not hard-code “LPs keep 75%.” v0.1.5 reads the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
+
+## Synthetic demo
+
+```bash
+houseedge demo
+```
+
+This validates plumbing only and uses a separate synthetic config. It never freezes or spends the real experiment.
+
+## Dashboard
+
+The dashboard remains read-only and separate from research/runner processes:
+
+```bash
+uv run streamlit run dashboard/app.py
+```
+
+## Safety / execution scope
+
+There are no private-key fields, wallet signers, transaction broadcasters, or live LP execution controls in this release. The micro-live pilot is a later telemetry/reconciliation task after v0.15 selects a viable minimum size; it is not part of the primary statistical sample.

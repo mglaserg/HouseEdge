@@ -1,38 +1,49 @@
-# HouseEdge LP — Experiment 001
+# HouseEdge LP — Experiment 001 (v0.15 calibration draft)
 
-**Status:** primary specification frozen before results.
+**Status:** NOT YET FROZEN. The v0.1 primary specification is superseded. Do not inspect or use primary LP P&L until the v0.15 outcome-blind calibration gates pass and this specification is frozen.
 
-## Counterparty
-Liquidity-demanding traders whose orders reach the Uniswap v3 pool.
+## Counterparty / mechanism / falsifier
 
-## Mechanism
-The LP earns its pro-rata share of swap fees while bearing adverse-selection / rebalancing losses. A discrete external delta hedge removes most directional exposure but introduces trading costs, funding, and hedge error.
+- **Counterparty:** liquidity-demanding traders whose orders reach the Base Uniswap v3 WETH/USDC 5 bp pool.
+- **Mechanism:** passive LP capital earns swap fees for immediacy while paying adverse-selection/rebalancing, boundary, protocol, gas, hedge, funding, and operational costs.
+- **Falsifier:** net discrete-delta-hedged LP **excess return over the precommitted on-chain cash alternative** fails the statistical, economic, or capacity hurdle. Measurement failures are VOID, not evidence against the hypothesis.
 
-## Falsifier
-Kill the pool hypothesis if the lower 95% stationary-bootstrap confidence bound of annualized **net discrete-hedged LP return** is not above zero after the preregistered costs, or if alignment diagnostics show that the apparent result is not robust enough to measure reliably.
+## v0.15 gates before freeze
 
-## Primary outcome
-Discrete-delta-hedged LP P&L, including LP inventory mark-to-market, fee revenue, hedge P&L, hedge trading cost, funding, and fixed operating cost.
+1. **Prospective power:** use a separate calibration return process with stationary dependence. Require >=80% statistical power to detect a true +5% annual excess edge. Because the final decision also requires a point estimate >=5%, full-GO power is separately evaluated at a larger material alternative (default +8%); power at a true +5% edge cannot exceed roughly 50% under an unbiased point-estimate hurdle set at +5%.
+2. **Regime coverage:** use ETH prices only. Define 20th/80th realized-variance thresholds on the calibration period and choose the still-blind primary window only if it contains at least five days in each tail regime.
+3. **Gate 0:** compute fee capture and predictable LVR on the same hypothetical concentrated-liquidity position. Use mean realized variance `E[sigma^2]`, never `(E[sigma])^2`.
+4. **Protocol fees:** read packed `slot0.feeProtocol` at the block preceding the sample and replay every `SetFeeProtocol` event. No static LP fee-share assumption.
+5. **JIT diagnostic:** detect short-lived Mint/Burn liquidity (<=3 blocks by default) and quantify its overlap with active liquidity. This is a diagnostic, not an assertion that pool events uniquely identify economic NFT positions.
+6. **Reference convention:** primary reference is the last non-stale CEX bid/ask midpoint at or before the Base block timestamp. No look-ahead; alternative alignments are sensitivity diagnostics only.
+7. **Seal prediction:** expected point estimate, CI width, capacity, and GO/KILL prediction are hashed before primary replay.
 
-Markouts are **flow-quality diagnostics only**. They are never subtracted from fees to manufacture a synthetic "house edge" statistic.
+## Frozen decision rule once v0.15 passes
 
-## Primary hedge policy
-A fixed $250 dollar-delta no-trade band. When the target hedge minus the current hedge exceeds the band, rebalance only to the nearest band edge. Alternative bands are not tuned inside Experiment 001.
+- **Numeraire:** USD.
+- **Primary hedge:** ETH perpetual on a venue selected and frozen before primary replay.
+- **Hedge trigger:** residual ETH delta notional >5% of current LP NAV.
+- **Hedge action:** rebalance residual delta to zero.
+- **Funding:** actual historical funding payments applied to actual hedge notional.
+- **Benchmark:** time-matched Aave v3 Base USDC supply return, explicitly treated as an on-chain cash alternative rather than a risk-free rate.
+- **Statistical GO:** lower 95% stationary-bootstrap CI of annualized excess return >0.
+- **Economic GO:** point estimate annualized excess return >=5%.
+- **Capacity GO:** passive-counterfactual capacity supports >=$10,000 expected annual excess profit at the economic hurdle.
+- **GO requires all three.** Otherwise KILL, unless a validity criterion makes the experiment VOID.
+- **Range optimization cannot rescue a KILL.**
 
-## Primary inference
-Stationary bootstrap over serially dependent swap-event P&L increments, 2,000 replications, expected block length 100 swaps.
+## VOID criteria
 
-Research GO requires the lower 95% confidence bound of annualized net hedged return to exceed zero.
+The experiment is VOID rather than KILL if any preregistered measurement requirement fails, including incomplete protocol-fee history, unresolved funding coverage, replay-state reconciliation failure, reference missingness >0.5%, or a micro-live fee-reconciliation error >1 bp of pilot NAV.
 
-Production is a later and harder gate: >=5% annualized net hedged return and approximately >=1 hedged Sharpe, with regime and out-of-sample validation.
+## Micro-live pilot
 
-## Null and measurement controls
-- Randomized swap-direction information markouts should be approximately zero.
-- Reference-price time shifts of -10, -5, -2, 0, +2, +5, +10 seconds quantify timestamp sensitivity.
-- Reference quotes older than 3 seconds are stale for the primary analysis.
+Run a permissionless micro-live LP telemetry position in parallel only after v0.15 selects a viable minimum size. It is excluded from the primary statistical sample. Its job is operational reconciliation: replayed accrued fees must match on-chain accrued fees within 1 bp of pilot NAV; failure blocks GO.
 
-## Capacity
-Sweep hypothetical capital from $1k to $300k using the same historical tape. Results are explicitly labeled **passive counterfactual capacity**; large sizes can change routing, price impact, and arbitrage and therefore are not assumed causal/exact.
+## Re-runs / looks
 
-## Scope exclusions
-No live wallet, no transaction signing, no range optimizer, no ML, and no execution service in Experiment 001.
+Any rerun after the primary outcome has been unblinded is a new EdgeLab look/trial, including a bug-fix rerun. Bugs found by preregistered reconciliation tests before primary outcome exposure are logged QA corrections and do not spend the outcome.
+
+## Markouts
+
+30s / 60s / 5m markouts are **flow-quality diagnostics only**. They are not LVR and are never subtracted from fees to create the primary statistic.

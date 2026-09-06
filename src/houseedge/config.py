@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from copy import deepcopy
 import hashlib
 import json
 import yaml
@@ -17,6 +18,22 @@ def canonical_hash(config: dict[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def calibration_basis_hash(config: dict[str, Any]) -> str:
+    """Hash assumptions that must not change after v0.15 calibration.
+
+    The outcome-blind calibration is allowed to select the primary start/end
+    and then move status to READY_TO_FREEZE. Everything else that affects the
+    design remains bound to the calibration report.
+    """
+    cfg=deepcopy(config)
+    cfg["status"]="CALIBRATION_REQUIRED"
+    cfg["registered_at"]=None
+    if "sample" in cfg:
+        cfg["sample"]["start"]=None
+        cfg["sample"]["end"]=None
+    return canonical_hash(cfg)
+
+
 @dataclass(frozen=True)
 class PoolSpec:
     token0_symbol: str
@@ -26,8 +43,8 @@ class PoolSpec:
     token1_address: str
     token1_decimals: int
     fee_tier_pips: int
-    lp_share_of_swap_fee: float
     pool_address: str | None = None
+    lp_share_of_swap_fee: float = 1.0
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "PoolSpec":

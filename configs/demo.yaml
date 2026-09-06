@@ -1,0 +1,41 @@
+experiment_id: HOUSEEDGE-LP-DEMO
+status: SYNTHETIC_ONLY
+spec_version: 0.1.5
+numeraire: USD
+pool:
+  token0_symbol: WETH
+  token0_address: "0x4200000000000000000000000000000000000006"
+  token0_decimals: 18
+  token1_symbol: USDC
+  token1_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  token1_decimals: 6
+  fee_tier_pips: 500
+  pool_address: null
+  lp_share_of_swap_fee: 1.0
+sample:
+  markout_horizons_seconds: [30, 60, 300]
+  markout_future_rule: first_quote_at_or_after_horizon
+  primary_alignment:
+    max_age_seconds: 3.0
+  alignment_shift_diagnostics_seconds: [-5, 0, 5]
+position:
+  initial_capital_usd: 10000.0
+  lower_multiplier: 0.80
+  upper_multiplier: 1.20
+  boundary_cross_fee_policy: zero
+hedge:
+  trigger_residual_delta_fraction_lp_nav: 0.05
+  rebalance_target: zero
+  taker_cost_bps: 2.0
+  charge_initial_and_final_hedge_costs: true
+inference:
+  stationary_bootstrap_reps: 500
+  stationary_bootstrap_mean_block_swaps: 100
+  confidence_level: 0.95
+benchmark:
+  annual_excess_return_hurdle: 0.05
+capacity:
+  capital_usd: [1000, 3000, 10000, 30000, 100000, 300000]
+  minimum_expected_annual_excess_profit_usd: 10000.0
+validity:
+  max_missing_reference_fraction: 0.005

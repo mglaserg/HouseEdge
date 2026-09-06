@@ -1,0 +1,10 @@
+import pandas as pd
+from houseedge.research.alignment import align_reference
+
+
+def test_primary_alignment_never_looks_forward():
+    swaps=pd.DataFrame({"timestamp":[pd.Timestamp("2026-01-01T00:00:02Z")],"amount0":[1.0],"amount1":[-1.0]})
+    ref=pd.DataFrame({"timestamp":[pd.Timestamp("2026-01-01T00:00:01Z"),pd.Timestamp("2026-01-01T00:00:02.100Z")],"mid":[100.0,999.0]})
+    a=align_reference(swaps,ref,tolerance_seconds=3)
+    assert a.iloc[0].ref_mid==100.0
+    assert a.iloc[0].quote_age_seconds==1.0

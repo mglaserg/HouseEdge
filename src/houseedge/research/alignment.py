@@ -11,8 +11,8 @@ def align_reference(swaps: pd.DataFrame, reference: pd.DataFrame, tolerance_seco
     r["timestamp"]=pd.to_datetime(r["timestamp"], utc=True)+pd.to_timedelta(shift_seconds, unit="s")
     r=r.rename(columns={"timestamp":"quote_timestamp","mid":"ref_mid"})
     keep=[c for c in ["quote_timestamp","ref_mid","bid","ask","source"] if c in r]
-    out=pd.merge_asof(s, r[keep].sort_values("quote_timestamp"), left_on="timestamp", right_on="quote_timestamp", direction="nearest", tolerance=pd.to_timedelta(tolerance_seconds,unit="s"))
-    out["quote_age_seconds"]=(out["timestamp"]-out["quote_timestamp"]).dt.total_seconds().abs()
+    out=pd.merge_asof(s, r[keep].sort_values("quote_timestamp"), left_on="timestamp", right_on="quote_timestamp", direction="backward", tolerance=pd.to_timedelta(tolerance_seconds,unit="s"))
+    out["quote_age_seconds"]=(out["timestamp"]-out["quote_timestamp"]).dt.total_seconds()
     return out
 
 

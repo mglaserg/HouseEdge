@@ -1,0 +1,12 @@
+{
+  "status": "UNSEALED_TEMPLATE",
+  "expected_annualized_hedged_return": null,
+  "expected_annualized_cash_benchmark_return": null,
+  "expected_annualized_excess_return": null,
+  "expected_95pct_ci_lower": null,
+  "expected_95pct_ci_upper": null,
+  "expected_passive_capacity_usd": null,
+  "expected_minimum_viable_size_usd": null,
+  "predicted_decision": null,
+  "notes": "Fill after v0.15 outcome-blind calibration and before primary replay; then seal with houseedge seal-prediction."
+}

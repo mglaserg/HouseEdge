@@ -18,6 +18,7 @@ POOL_ABI = [
     {"anonymous":False,"inputs":[{"indexed":True,"internalType":"address","name":"sender","type":"address"},{"indexed":True,"internalType":"address","name":"recipient","type":"address"},{"indexed":False,"internalType":"int256","name":"amount0","type":"int256"},{"indexed":False,"internalType":"int256","name":"amount1","type":"int256"},{"indexed":False,"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"},{"indexed":False,"internalType":"uint128","name":"liquidity","type":"uint128"},{"indexed":False,"internalType":"int24","name":"tick","type":"int24"}],"name":"Swap","type":"event"},
     {"anonymous":False,"inputs":[{"indexed":False,"internalType":"address","name":"sender","type":"address"},{"indexed":True,"internalType":"address","name":"owner","type":"address"},{"indexed":True,"internalType":"int24","name":"tickLower","type":"int24"},{"indexed":True,"internalType":"int24","name":"tickUpper","type":"int24"},{"indexed":False,"internalType":"uint128","name":"amount","type":"uint128"},{"indexed":False,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":False,"internalType":"uint256","name":"amount1","type":"uint256"}],"name":"Mint","type":"event"},
     {"anonymous":False,"inputs":[{"indexed":True,"internalType":"address","name":"owner","type":"address"},{"indexed":True,"internalType":"int24","name":"tickLower","type":"int24"},{"indexed":True,"internalType":"int24","name":"tickUpper","type":"int24"},{"indexed":False,"internalType":"uint128","name":"amount","type":"uint128"},{"indexed":False,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":False,"internalType":"uint256","name":"amount1","type":"uint256"}],"name":"Burn","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":False,"internalType":"uint8","name":"feeProtocol0Old","type":"uint8"},{"indexed":False,"internalType":"uint8","name":"feeProtocol1Old","type":"uint8"},{"indexed":False,"internalType":"uint8","name":"feeProtocol0New","type":"uint8"},{"indexed":False,"internalType":"uint8","name":"feeProtocol1New","type":"uint8"}],"name":"SetFeeProtocol","type":"event"},
     {"inputs":[],"name":"liquidity","outputs":[{"internalType":"uint128","name":"","type":"uint128"}],"stateMutability":"view","type":"function"},
     {"inputs":[],"name":"slot0","outputs":[{"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"},{"internalType":"int24","name":"tick","type":"int24"},{"internalType":"uint16","name":"observationIndex","type":"uint16"},{"internalType":"uint16","name":"observationCardinality","type":"uint16"},{"internalType":"uint16","name":"observationCardinalityNext","type":"uint16"},{"internalType":"uint8","name":"feeProtocol","type":"uint8"},{"internalType":"bool","name":"unlocked","type":"bool"}],"stateMutability":"view","type":"function"},
     {"inputs":[],"name":"fee","outputs":[{"internalType":"uint24","name":"","type":"uint24"}],"stateMutability":"view","type":"function"},
@@ -86,12 +87,19 @@ def _event_rows(event_logs: Iterable, event_name: str, spec: PoolSpec) -> list[d
                 "sqrt_price_x96": int(a["sqrtPriceX96"]),
                 "liquidity": int(a["liquidity"]), "tick": int(a["tick"]),
             })
-        else:
+        elif event_name in ("Mint", "Burn"):
             row.update({
                 "owner": a["owner"], "tick_lower": int(a["tickLower"]), "tick_upper": int(a["tickUpper"]),
                 "liquidity_delta": int(a["amount"]) * (1 if event_name == "Mint" else -1),
                 "amount0": int(a["amount0"]) / 10**spec.token0_decimals,
                 "amount1": int(a["amount1"]) / 10**spec.token1_decimals,
+            })
+        elif event_name == "SetFeeProtocol":
+            row.update({
+                "fee_protocol0_old": int(a["feeProtocol0Old"]),
+                "fee_protocol1_old": int(a["feeProtocol1Old"]),
+                "fee_protocol0_new": int(a["feeProtocol0New"]),
+                "fee_protocol1_new": int(a["feeProtocol1New"]),
             })
         rows.append(row)
     return rows
@@ -114,7 +122,7 @@ def fetch_events(
     rows=[]
     for start in range(int(from_block), int(to_block)+1, int(chunk_blocks)):
         end=min(start+chunk_blocks-1, int(to_block))
-        for name in ("Swap", "Mint", "Burn"):
+        for name in ("Swap", "Mint", "Burn", "SetFeeProtocol"):
             event=getattr(pool.events, name)
             logs=event().get_logs(from_block=start, to_block=end)
             rows.extend(_event_rows(logs, name, spec))
@@ -124,6 +132,13 @@ def fetch_events(
         df=df.sort_values(["block_number","transaction_index","log_index"]).reset_index(drop=True)
     return df
 
+
+
+def read_fee_protocol_at_block(w3: Web3, pool_address: str, block_number: int) -> int:
+    """Read packed slot0.feeProtocol at an exact historical block."""
+    pool = w3.eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
+    slot0 = pool.functions.slot0().call(block_identifier=int(block_number))
+    return int(slot0[5])
 
 def save_events(df: pd.DataFrame, path: str | Path) -> Path:
     return write_frame(df, path)
