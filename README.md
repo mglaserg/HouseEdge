@@ -1,8 +1,8 @@
-# HouseEdge LP v0.1.5
+# HouseEdge LP v0.1.6
 
 HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-v0.1.5 is a governance/calibration patch over the v0.1.0 scaffold. It deliberately does **not** open Experiment 001. Its job is to make the eventual Base / Uniswap v3 WETH-USDC experiment falsifiable before primary LP P&L is inspected.
+v0.1.6 is a configuration-freeze patch over the v0.1.5 governance scaffold. It deliberately does **not** open Experiment 001. Its job is to make the eventual Base / Uniswap v3 WETH-USDC experiment falsifiable before primary LP P&L is inspected.
 
 ## Core rule
 
@@ -12,21 +12,18 @@ Counterparty -> Compensation -> Costs -> Falsifier -> EdgeLab -> Build
 
 A KILL is a successful research outcome. A measurement failure is VOID, not KILL. Range optimization cannot rescue a primary KILL.
 
-## What changed in v0.1.5
+## What changed in v0.1.6
 
-- v0.1 Experiment 001 decision spec is superseded; the new spec starts as `CALIBRATION_REQUIRED`.
-- Prospective power analysis is required before primary dates are frozen.
-- ETH realized-volatility regime coverage is checked before the primary window is chosen.
-- Gate 0 now compares fee capture and predictable LVR on the **same hypothetical concentrated-liquidity position** and uses mean realized variance `E[sigma^2]`.
-- Uniswap v3 `SetFeeProtocol` events are archived and LP protocol-fee share can vary swap-by-swap.
-- Short-lived/JIT liquidity has an explicit early diagnostic.
-- Primary CEX alignment is frozen to the **last non-stale bid/ask midpoint at or before the Base block timestamp**.
-- Primary hedge policy is 5% of LP NAV residual ETH delta, rebalance to zero; actual historical funding is required for a real run.
-- Primary performance is **excess over the precommitted on-chain cash benchmark** (Aave v3 Base USDC), not raw return and not “risk-free” return.
-- GO requires statistical significance, >=5% annualized excess return, and >=$10,000/year passive-counterfactual economic capacity.
-- VOID criteria and micro-live fee-reconciliation threshold are explicit.
-- Prediction files are SHA-256 sealed before the primary replay.
-- Every post-unblind rerun is automatically counted as a new outcome look/trial.
+- Freeze Experiment 001 to the Base Uniswap v3 WETH/USDC 5 bp pool at `0xd0b53d9277642d899df5c87a3966a349a798f224`.
+- Precommit the calibration window to 2025-07-01..2025-12-31 and the candidate primary window to 2026-01-01..2026-08-31.
+- Precommit Hyperliquid ETH perpetual as the hedge venue, 5.0 bp taker+slippage cost, 1-hour funding cadence, 5% NAV delta trigger, and rebalance-to-zero policy.
+- Precommit Gate-0 variable friction at 2.5%/yr plus $100/yr fixed cost.
+- Change the primary historical fair-value convention to Binance spot ETH/USDC **last trade at or before the Base block timestamp**, max age 3 seconds. No look-ahead is allowed.
+- Replace the arbitrary 100-swap stationary-bootstrap block with an outcome-blind calibration-derived dependence length. The calibration report selects the block length and freeze verifies that exact value.
+- Add `houseedge prepare-freeze` to apply only the passing calibration report's selected dates and bootstrap block length to the YAML.
+- Historical trade-tape reference inputs may now provide `price` or `last_trade` instead of bid/ask midpoint columns.
+
+All other v0.1.5 governance remains in force: power, regime coverage, same-basis Gate 0, historical protocol fees, JIT diagnostics, Aave Base USDC cash benchmark, statistical/economic/capacity hurdles, VOID rules, micro-live reconciliation, sealed prediction, and post-unblind look counting.
 
 ## Install
 
@@ -58,9 +55,9 @@ houseedge fetch-events \
 
 `fetch-events` now archives `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` in exact block / transaction / log order. It also reads `slot0.feeProtocol` at the block immediately preceding the requested window and attaches the historically correct LP fee fraction to each swap.
 
-### 3. Freeze calibration-only assumptions and prepare inputs
+### 3. Prepare outcome-blind calibration inputs
 
-Before running power, choose the ETH perpetual hedge venue and its expected funding interval in `configs/experiment_001.yaml`, and fill the outcome-blind Gate-0 variable/fixed cost assumptions. These affect the noise/economic hurdle and are bound into the calibration hash.
+v0.1.6 has already frozen the primary hedge venue/cost convention and Gate-0 cost assumptions in `configs/experiment_001.yaml`. These assumptions are bound into the calibration hash.
 
 `houseedge calibrate-design` then expects:
 
@@ -94,14 +91,16 @@ The report includes:
 
 A calibration `PASS` is permission to **freeze a test**, not evidence that LP edge exists.
 
-### 4. Fill only the selected primary dates
+### 4. Apply the calibration-selected fields
 
 Only after calibration passes:
 
-- copy the exact candidate-window `start` / `end` emitted by the passing calibration report into `sample.start` / `sample.end`;
-- set `status: READY_TO_FREEZE`.
+```bash
+houseedge prepare-freeze \
+  --calibration-report runs/v015_calibration/calibration_report.json
+```
 
-Freeze verifies that all other calibration assumptions still hash to the passing report. Changing the hedge venue, costs, power settings, regime rules, benchmark, or capacity hurdle requires a new calibration run.
+This writes only the exact candidate-window `start` / `end`, the calibration-derived stationary-bootstrap mean block length, and `status: READY_TO_FREEZE`. Freeze verifies that all other calibration assumptions still hash to the passing report. Changing the hedge venue, costs, power settings, regime rules, benchmark, reference convention, or capacity hurdle requires a new calibration run.
 
 ### 5. Seal the prior prediction
 
@@ -122,7 +121,7 @@ Freeze refuses to proceed if calibration did not pass, the spec is not `READY_TO
 
 ## Eventual v0.2 primary run
 
-v0.1.5 prepares the governance, but **v0.2 still owes exact replay-state reconciliation and complete real-data funding/cost ingestion**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
+v0.1.6 prepares the governance and freezes the remaining calibration choices, but **v0.2 still owes exact replay-state reconciliation and complete real-data funding/cost ingestion**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
 
 The frozen outcome will use:
 
@@ -148,7 +147,7 @@ Otherwise the result is KILL or VOID as appropriate.
 
 30s / 60s / 5m markouts remain **flow-quality diagnostics only**. They are not LVR and are never subtracted from fees to form the primary P&L statistic.
 
-The primary reference alignment is backward-only: no quote after the Base block timestamp can be used as the contemporaneous fair-price observation.
+The primary historical reference is Binance spot ETH/USDC trade tape. The contemporaneous value is the last non-stale trade at or before the Base block timestamp (max age 3 seconds); no later trade can be used. Alternative midpoint/composite references are sensitivity diagnostics only.
 
 ## JIT liquidity
 
@@ -156,7 +155,7 @@ The primary reference alignment is backward-only: no quote after the Base block 
 
 ## Protocol fees
 
-Do not hard-code “LPs keep 75%.” v0.1.5 reads the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
+Do not hard-code “LPs keep 75%.” v0.1.6 reads the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
 
 ## Synthetic demo
 

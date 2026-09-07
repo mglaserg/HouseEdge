@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.6 — Experiment 001 configuration freeze
+
+- Freeze the Base WETH/USDC 5 bp pool address and outcome-blind calibration/candidate windows.
+- Freeze Hyperliquid ETH perp hedge venue, 5 bp taker+slippage cost, 1-hour funding cadence, 5% NAV delta trigger, and rebalance-to-zero policy.
+- Freeze Gate-0 variable/fixed cost assumptions at 2.5%/yr + $100/yr.
+- Freeze the primary historical reference to backward-only Binance spot ETH/USDC last trades with a 3-second staleness limit.
+- Replace the arbitrary 100-swap bootstrap block with a calibration-derived autocorrelation length, bounded to 5..1000 swaps.
+- Bind the selected bootstrap block length to the passing calibration report and require an exact match at freeze.
+- Add `houseedge prepare-freeze` to apply calibration-selected dates/block length without opening the primary outcome.
+- Accept historical reference trade tapes with `price` or `last_trade` columns.
+- Expand the test suite to cover the selected Experiment 001 config, trade-price reference normalization, serial-dependence block calibration, and prepare-freeze governance.
+
 ## 0.1.5 — v0.15 governance/calibration patch
 
 - Supersede the v0.1 Experiment 001 decision configuration; primary outcome remains unopened.

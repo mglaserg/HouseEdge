@@ -31,6 +31,10 @@ def calibration_basis_hash(config: dict[str, Any]) -> str:
     if "sample" in cfg:
         cfg["sample"]["start"]=None
         cfg["sample"]["end"]=None
+    # v0.1.6 allows one post-calibration edit: the inference block length must
+    # be filled with the exact outcome-blind value selected by calibration.
+    if "inference" in cfg:
+        cfg["inference"]["stationary_bootstrap_mean_block_swaps"]=None
     return canonical_hash(cfg)
 
 

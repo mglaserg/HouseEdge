@@ -23,9 +23,16 @@ def normalize_reference(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("reference data requires timestamp")
     out["timestamp"]=pd.to_datetime(out["timestamp"], utc=True)
     if "mid" not in out:
-        if not {"bid","ask"}.issubset(out.columns):
-            raise ValueError("reference data requires mid or bid+ask")
-        out["mid"]=(pd.to_numeric(out["bid"])+pd.to_numeric(out["ask"]))/2
+        if "price" in out:
+            # Historical trade tape: treat the observed trade price as the
+            # preregistered reference value. v0.1.6 uses backward-only alignment.
+            out["mid"]=pd.to_numeric(out["price"])
+        elif "last_trade" in out:
+            out["mid"]=pd.to_numeric(out["last_trade"])
+        elif {"bid","ask"}.issubset(out.columns):
+            out["mid"]=(pd.to_numeric(out["bid"])+pd.to_numeric(out["ask"]))/2
+        else:
+            raise ValueError("reference data requires price/last_trade, mid, or bid+ask")
     out["mid"]=pd.to_numeric(out["mid"])
     if "source" not in out:
         out["source"]="external"

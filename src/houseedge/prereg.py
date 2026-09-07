@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import hashlib
 import json
+import yaml
 from datetime import datetime, timezone
 from houseedge.config import canonical_hash, calibration_basis_hash, load_yaml
 
@@ -33,6 +34,40 @@ def _load_json(path: str | Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+
+def apply_calibration_selection(
+    config_path: str | Path,
+    calibration_report_path: str | Path,
+) -> dict:
+    """Apply only the outcome-blind fields selected by a passing calibration.
+
+    The calibration-basis hash intentionally normalizes these fields, so this
+    transition cannot alter the assumptions that generated the PASS.
+    """
+    cfg=load_yaml(config_path)
+    report=_load_json(calibration_report_path)
+    if report.get("status") != "PASS":
+        raise RuntimeError("Calibration report did not PASS; cannot prepare the spec for freeze.")
+    if report.get("calibration_basis_sha256") != calibration_basis_hash(cfg):
+        raise RuntimeError("Current design assumptions differ from the calibration report.")
+    candidate=report.get("candidate_window",{})
+    block=report.get("bootstrap",{}).get("selected_mean_block_swaps")
+    if not candidate.get("start") or not candidate.get("end") or block is None:
+        raise RuntimeError("Calibration report is missing candidate dates or selected bootstrap block length.")
+    cfg["sample"]["start"]=candidate["start"]
+    cfg["sample"]["end"]=candidate["end"]
+    cfg["inference"]["stationary_bootstrap_mean_block_swaps"]=float(block)
+    cfg["status"]="READY_TO_FREEZE"
+    Path(config_path).write_text(yaml.safe_dump(cfg,sort_keys=False),encoding="utf-8")
+    return {
+        "status":cfg["status"],
+        "sample_start":cfg["sample"]["start"],
+        "sample_end":cfg["sample"]["end"],
+        "stationary_bootstrap_mean_block_swaps":float(block),
+        "calibration_basis_sha256":calibration_basis_hash(cfg),
+    }
+
+
 def freeze_record(
     config_path: str | Path,
     registry_path: str | Path = "data/prereg_registry.jsonl",
@@ -51,6 +86,14 @@ def freeze_record(
         raise RuntimeError("Calibration report did not PASS; primary experiment cannot be frozen.")
     if report.get("calibration_basis_sha256") != calibration_basis_hash(cfg):
         raise RuntimeError("Current design assumptions differ from the passing calibration report. Re-run v0.15 calibration before freeze.")
+    selected_block = report.get("bootstrap",{}).get("selected_mean_block_swaps")
+    configured_block = cfg.get("inference",{}).get("stationary_bootstrap_mean_block_swaps")
+    if selected_block is None:
+        raise RuntimeError("Calibration report is missing the selected stationary-bootstrap block length.")
+    if configured_block is None or abs(float(configured_block)-float(selected_block)) > 1e-12:
+        raise RuntimeError(
+            "Set inference.stationary_bootstrap_mean_block_swaps to the exact outcome-blind value selected by the passing calibration report before freeze."
+        )
     sample=cfg.get("sample",{})
     if not sample.get("start") or not sample.get("end"):
         raise RuntimeError("Primary sample start/end must be filled from the passing outcome-blind calibration window before freeze.")

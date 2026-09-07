@@ -10,6 +10,7 @@ from houseedge.research.benchmark import time_weighted_apy_return
 from houseedge.research.gate0 import gate0_from_tape
 from houseedge.research.jit import jit_dilution_diagnostic
 from houseedge.research.power import prospective_power
+from houseedge.research.bootstrap import estimate_mean_block_length
 from houseedge.research.regime import check_regime_coverage, daily_realized_variance
 from houseedge.data.storage import write_frame
 
@@ -47,11 +48,19 @@ def run_design_calibration(
     if power_col not in calibration_excess_increments:
         raise ValueError(f"calibration increments require `{power_col}`")
     p_cfg=cal["power"]
+    method=str(p_cfg.get("stationary_bootstrap_block_method","calibration_autocorrelation"))
+    if method != "calibration_autocorrelation":
+        raise ValueError(f"unsupported stationary bootstrap block method: {method}")
+    selected_mean_block=estimate_mean_block_length(
+        calibration_excess_increments[power_col].to_numpy(),
+        minimum=int(p_cfg.get("stationary_bootstrap_min_mean_block_swaps",5)),
+        maximum=int(p_cfg.get("stationary_bootstrap_max_mean_block_swaps",1000)),
+    )
     common=dict(
         calibration_excess_return_increments=calibration_excess_increments[power_col].to_numpy(),
         sample_observations=len(aligned), sample_duration_days=duration_days,
         economic_hurdle_annual_excess_return=float(cfg["benchmark"]["annual_excess_return_hurdle"]),
-        mean_block_length=float(p_cfg["stationary_bootstrap_mean_block_swaps"]),
+        mean_block_length=float(selected_mean_block),
         confidence_level=float(p_cfg["confidence_level"]),
         outer_reps=int(p_cfg["outer_reps"]), inner_bootstrap_reps=int(p_cfg["inner_bootstrap_reps"]),
     )
@@ -115,6 +124,7 @@ def run_design_calibration(
         "candidate_window":{"start":start.isoformat(),"end":end.isoformat(),"duration_days":duration_days,"aligned_swaps":int(len(aligned))},
         "benchmark":{"window_return":bench_window,"annualized_return":bench_ann},
         "realized_variance":{"mean_annualized_variance":mean_ann_var},
+        "bootstrap":{"method":method,"selected_mean_block_swaps":float(selected_mean_block)},
         "power":{"detectability_at_5pct":detect_power.as_dict(),"full_go_material_alternative":full_power.as_dict(),"statistical_power_pass":stat_power_pass,"full_go_power_pass":full_power_pass},
         "regime_coverage":regimes.as_dict(),"gate0":gate.as_dict(),"jit":jit.as_dict(),
         "capacity":{"passes":capacity_pass,"max_expected_annual_excess_profit_usd":max_prize,"minimum_required_usd":float(cfg["capacity"]["minimum_expected_annual_excess_profit_usd"])},

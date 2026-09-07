@@ -8,3 +8,16 @@ def test_primary_alignment_never_looks_forward():
     a=align_reference(swaps,ref,tolerance_seconds=3)
     assert a.iloc[0].ref_mid==100.0
     assert a.iloc[0].quote_age_seconds==1.0
+
+from houseedge.data.reference import normalize_reference
+
+
+def test_trade_price_reference_is_supported_and_backward_only():
+    ref=normalize_reference(pd.DataFrame({
+        "timestamp":[pd.Timestamp("2026-01-01T00:00:01Z"),pd.Timestamp("2026-01-01T00:00:03Z")],
+        "price":[100.0,999.0],
+        "source":["binance","binance"],
+    }))
+    swaps=pd.DataFrame({"timestamp":[pd.Timestamp("2026-01-01T00:00:02Z")],"amount0":[1.0],"amount1":[-1.0]})
+    a=align_reference(swaps,ref,tolerance_seconds=3)
+    assert a.iloc[0].ref_mid==100.0

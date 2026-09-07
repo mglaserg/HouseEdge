@@ -1,121 +1,128 @@
 experiment_id: HOUSEEDGE-LP-001
 status: CALIBRATION_REQUIRED
-spec_version: 0.1.5
+spec_version: 0.1.6
 registered_at: null
-
 thesis:
-  counterparty: "Liquidity-demanding traders whose orders reach the Uniswap v3 pool."
-  mechanism: "Passive LP capital earns its pro-rata swap fees while bearing adverse selection, inventory rebalancing, boundary, hedge, funding, gas, and protocol costs."
-  falsifier: "Net discrete-delta-hedged LP excess return over the precommitted on-chain cash benchmark is not statistically and economically positive at viable capacity, or the experiment is VOID under precommitted measurement criteria."
-
+  counterparty: Liquidity-demanding traders whose orders reach the Uniswap v3 pool.
+  mechanism: Passive LP capital earns its pro-rata swap fees while bearing adverse
+    selection, inventory rebalancing, boundary, hedge, funding, gas, and protocol
+    costs.
+  falsifier: Net discrete-delta-hedged LP excess return over the precommitted on-chain
+    cash benchmark is not statistically and economically positive at viable capacity,
+    or the experiment is VOID under precommitted measurement criteria.
 chain:
   name: base
   chain_id: 8453
   rpc_env: BASE_RPC_URL
   default_rpc: https://mainnet.base.org
-  uniswap_v3_factory: "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"
-
+  uniswap_v3_factory: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD'
 pool:
   token0_symbol: WETH
-  token0_address: "0x4200000000000000000000000000000000000006"
+  token0_address: '0x4200000000000000000000000000000000000006'
   token0_decimals: 18
   token1_symbol: USDC
-  token1_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  token1_address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
   token1_decimals: 6
   fee_tier_pips: 500
-  pool_address: null
+  pool_address: '0xd0b53d9277642d899df5c87a3966a349a798f224'
   protocol_fee_policy: historical_slot0_and_SetFeeProtocol
-
 numeraire: USD
-
 calibration:
   outcome_blind: true
   calibration_window:
-    start: null
-    end: null
+    start: '2025-07-01'
+    end: '2025-12-31'
   candidate_primary_window:
-    start: null
-    end: null
+    start: '2026-01-01'
+    end: '2026-08-31'
   power:
     confidence_level: 0.95
-    minimum_statistical_power: 0.80
+    minimum_statistical_power: 0.8
     detectability_alternative_annual_excess_return: 0.05
-    # Full GO also requires point estimate >=5%; power at a true 5% edge is structurally <=~50%.
-    # Therefore full-decision power is measured at a larger material alternative.
     full_go_power_alternative_annual_excess_return: 0.08
-    minimum_full_go_power: 0.80
+    minimum_full_go_power: 0.8
     outer_reps: 500
     inner_bootstrap_reps: 500
-    stationary_bootstrap_mean_block_swaps: 100
+    stationary_bootstrap_block_method: calibration_autocorrelation
+    stationary_bootstrap_min_mean_block_swaps: 5
+    stationary_bootstrap_max_mean_block_swaps: 1000
   regimes:
     sampling_minutes: 5
-    lower_quantile: 0.20
-    upper_quantile: 0.80
+    lower_quantile: 0.2
+    upper_quantile: 0.8
     minimum_days_each: 5
   gate0:
     hypothetical_capital_usd: 10000.0
-    lower_multiplier: 0.80
-    upper_multiplier: 1.20
+    lower_multiplier: 0.8
+    upper_multiplier: 1.2
     economic_hurdle_annual_excess_return: 0.05
-    # Must be estimated outcome-blind from calibration hedge/funding/gas assumptions before v0.15 is run.
-    annual_variable_cost_yield_assumption: null
-    annual_fixed_cost_usd: null
+    annual_variable_cost_yield_assumption: 0.025
+    annual_fixed_cost_usd: 100.0
   jit:
     max_lifetime_blocks: 3
-
 sample:
-  # Filled only after v0.15 power + regime checks pass while still blind to primary LP P&L.
   start: null
   end: null
-  primary_reference: PRECOMMITTED_CEX_COMPOSITE
-  markout_horizons_seconds: [30, 60, 300]
+  primary_reference: BINANCE_SPOT_ETHUSDC
+  markout_horizons_seconds:
+  - 30
+  - 60
+  - 300
   markout_future_rule: first_quote_at_or_after_horizon
   primary_alignment:
-    quote: bid_ask_midpoint
+    quote: last_trade
     direction: backward
-    rule: last_non_stale_midpoint_at_or_before_block_timestamp
+    rule: last_non_stale_trade_at_or_before_block_timestamp
     max_age_seconds: 3.0
-  alignment_shift_diagnostics_seconds: [-10, -5, -2, 0, 2, 5, 10]
-
+  alignment_shift_diagnostics_seconds:
+  - -10
+  - -5
+  - -2
+  - 0
+  - 2
+  - 5
+  - 10
 position:
   initial_capital_usd: 10000.0
-  lower_multiplier: 0.80
-  upper_multiplier: 1.20
+  lower_multiplier: 0.8
+  upper_multiplier: 1.2
   boundary_cross_fee_policy: zero
   range_optimization_allowed: false
-
 hedge:
   instrument: ETH_PERP
-  # Must be chosen before calibrate-design because hedge/funding noise affects power.
-  venue: null
+  venue: HYPERLIQUID
   trigger_residual_delta_fraction_lp_nav: 0.05
   rebalance_target: zero
   cost_model: actual_venue_fees_plus_preregistered_slippage
-  taker_cost_bps: null
+  taker_cost_bps: 5.0
   funding_mode: actual_historical_payments_required
-  expected_funding_interval_hours: null
+  expected_funding_interval_hours: 1
   charge_initial_and_final_hedge_costs: true
-
 benchmark:
   name: AAVE_V3_BASE_USDC
   interpretation: on_chain_cash_alternative_not_risk_free
   rate_series_required: true
   annual_excess_return_hurdle: 0.05
-
 inference:
   stationary_bootstrap_reps: 2000
-  stationary_bootstrap_mean_block_swaps: 100
+  stationary_bootstrap_mean_block_swaps: null
   confidence_level: 0.95
   primary_trial_count: 1
   statistical_go_rule: lower_95pct_ci_annualized_excess_return_gt_0
   economic_go_rule: point_estimate_annualized_excess_return_gte_0_05
-
 capacity:
-  capital_usd: [1000, 3000, 10000, 30000, 100000, 200000, 300000, 500000]
+  capital_usd:
+  - 1000
+  - 3000
+  - 10000
+  - 30000
+  - 100000
+  - 200000
+  - 300000
+  - 500000
   label: passive_counterfactual_capacity
   minimum_expected_annual_excess_profit_usd: 10000.0
   compute_minimum_viable_size: true
-
 validity:
   max_missing_reference_fraction: 0.005
   max_unresolved_funding_gap_hours: 0.0
@@ -126,14 +133,15 @@ validity:
     max_fee_reconciliation_error_bps_nav: 1.0
     size_usd: null
     size_selected_from_minimum_viable_size: true
-
 prediction:
   require_sealed_prediction_before_freeze: true
   prediction_file: prereg/experiment_001_prediction.json
-
 reruns:
-  rule: "Any rerun after the primary outcome has been unblinded is a new EdgeLab look/trial, including bug-fix reruns. Pre-outcome reconciliation corrections remain logged QA and do not spend the primary outcome."
-
+  rule: Any rerun after the primary outcome has been unblinded is a new EdgeLab look/trial,
+    including bug-fix reruns. Pre-outcome reconciliation corrections remain logged
+    QA and do not spend the primary outcome.
 variants:
   enabled_for_primary_decision: false
-  note: "Alternative hedge bands, ranges, pools, reference conventions, and hedge venues are new registered experiments. Markouts, nulls, alignment shifts, JIT diagnostics, and passive capacity are diagnostics unless separately promoted before freeze."
+  note: Alternative hedge bands, ranges, pools, reference conventions, and hedge venues
+    are new registered experiments. Markouts, nulls, alignment shifts, JIT diagnostics,
+    and passive capacity are diagnostics unless separately promoted before freeze.

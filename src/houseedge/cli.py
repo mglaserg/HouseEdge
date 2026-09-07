@@ -13,7 +13,7 @@ from houseedge.data.reference import collect_coinbase_ticker
 from houseedge.research.gate0 import gate0
 from houseedge.experiment import run_experiment, preflight_primary_inputs
 from houseedge.demo import synthetic_tape
-from houseedge.prereg import freeze_record, assert_frozen, seal_prediction, register_outcome_look
+from houseedge.prereg import freeze_record, assert_frozen, seal_prediction, register_outcome_look, apply_calibration_selection
 from houseedge.calibration import run_design_calibration
 
 app=typer.Typer(help="HouseEdge LP research CLI — no live execution or wallet signing.")
@@ -30,6 +30,15 @@ def freeze(
     """Freeze Experiment 001 only after passing v0.15 calibration."""
     rec=freeze_record(config,registry,calibration_report_path=calibration_report,prediction_path=prediction,prediction_registry_path=prediction_registry)
     print(rec)
+
+@app.command("prepare-freeze")
+def prepare_freeze_cmd(
+    calibration_report: str=typer.Option(...,"--calibration-report"),
+    config: str=DEFAULT_CONFIG,
+):
+    """Apply outcome-blind calibration-selected dates/block length to the spec."""
+    print(apply_calibration_selection(config,calibration_report))
+
 
 @app.command("seal-prediction")
 def seal_prediction_cmd(prediction: str="prereg/experiment_001_prediction.json", registry: str="data/prediction_registry.jsonl"):
