@@ -81,6 +81,26 @@ def _timestamp_unit(values: pd.Series) -> str:
     return "us" if float(x.median()) >= 1e14 else "ms"
 
 
+def _epoch_us(values) -> np.ndarray:
+    """Convert datetime-like values to Unix microseconds independent of pandas resolution.
+
+    pandas 3 can preserve ``datetime64[us]`` rather than coercing everything to
+    nanoseconds.  Dividing ``astype("int64")`` by 1000 therefore becomes
+    resolution-dependent.  Converting explicitly to ``datetime64[us]`` makes
+    the archive matcher stable across pandas 2.x/3.x and operating systems.
+    """
+    ts = pd.to_datetime(values, utc=True)
+    if isinstance(ts, pd.Series):
+        arr = ts.to_numpy(dtype="datetime64[us]")
+    else:
+        arr = np.asarray(ts, dtype="datetime64[us]")
+    return arr.astype(np.int64, copy=False)
+
+
+def _timestamp_epoch_us(value) -> int:
+    return int(_epoch_us([value])[0])
+
+
 def _read_zip_chunks(path: Path, names: list[str], chunksize: int = 500_000):
     with zipfile.ZipFile(path) as zf:
         members = [n for n in zf.namelist() if not n.endswith("/") and n.lower().endswith((".csv", ".txt"))]
@@ -127,7 +147,7 @@ def load_last_trades_for_targets(symbol: str, target_timestamps, cache_dir: str 
     targets = pd.Series(pd.to_datetime(pd.Series(target_timestamps), utc=True).dropna().unique()).sort_values().reset_index(drop=True)
     if targets.empty:
         return pd.DataFrame(columns=["timestamp", "mid", "source", "alignment_eligible", "regime_eligible", "target_timestamp", "age_seconds"])
-    target_us = (targets.astype("int64") // 1000).to_numpy(dtype=np.int64)
+    target_us = _epoch_us(targets)
     result_time = np.full(len(targets), -1, dtype=np.int64)
     result_price = np.full(len(targets), np.nan, dtype=float)
     cursor = 0
@@ -161,7 +181,7 @@ def load_last_trades_for_targets(symbol: str, target_timestamps, cache_dir: str 
             carry_t = int(trade_us[-1]); carry_p = float(trade_p[-1])
         # Any targets later in this calendar month but after the last archive
         # trade can still use the final trade, subject to the 3-second staleness rule.
-        month_end = (month + pd.offsets.MonthBegin(1)).value // 1000 - 1
+        month_end = _timestamp_epoch_us(month + pd.offsets.MonthBegin(1)) - 1
         hi = int(np.searchsorted(target_us, month_end, side="right"))
         if carry_t is not None and hi > cursor:
             dest = np.arange(cursor, hi)

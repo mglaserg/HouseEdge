@@ -1,8 +1,8 @@
-# HouseEdge LP v0.1.7
+# HouseEdge LP v0.1.8
 
 HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-v0.1.7 is the outcome-blind data-acquisition patch over the frozen v0.1.6 Experiment 001 design. It deliberately does **not** open the candidate-primary LP outcome. Its job is to make the full v0.15 calibration reproducible from public/on-chain data on Lubuntu.
+v0.1.8 is the portable outcome-blind data-acquisition release over the frozen v0.1.6 Experiment 001 design. It deliberately does **not** open the candidate-primary LP outcome. Its job is to make the full v0.15 calibration reproducible from public/on-chain data on Lubuntu.
 
 ## Core rule
 
@@ -12,7 +12,10 @@ Counterparty -> Compensation -> Costs -> Falsifier -> EdgeLab -> Build
 
 A KILL is a successful research outcome. A measurement failure is VOID, not KILL. Range optimization cannot rescue a primary KILL.
 
-## What changed in v0.1.7
+## What changed in v0.1.8
+
+- Make Binance archive timestamp matching resolution-independent across pandas 2.x/3.x by converting explicitly to Unix microseconds.
+- Normalize acquisition-manifest output paths to POSIX form on every OS.
 
 - Add `houseedge fetch-calibration-data`, which automatically builds every real-data file consumed by `calibrate-design`.
 - Resolve the preregistered calibration/candidate UTC windows to Base block ranges by binary search.
@@ -126,7 +129,7 @@ Freeze refuses to proceed if calibration did not pass, the spec is not `READY_TO
 
 ## Eventual v0.2 primary run
 
-v0.1.7 prepares governance **and acquires the v0.15 real-data inputs**, but **v0.2 still owes exact primary replay-state reconciliation and final real-data cost execution**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
+v0.1.8 prepares governance **and acquires the v0.15 real-data inputs**, but **v0.2 still owes exact primary replay-state reconciliation and final real-data cost execution**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
 
 The frozen outcome will use:
 
@@ -160,7 +163,7 @@ The primary historical reference is Binance spot ETH/USDC trade tape. The contem
 
 ## Protocol fees
 
-Do not hard-code “LPs keep 75%.” v0.1.7 reads the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
+Do not hard-code “LPs keep 75%.” v0.1.8 reads the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
 
 ## Synthetic demo
 

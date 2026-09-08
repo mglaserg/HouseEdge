@@ -31,7 +31,7 @@ def calibration_basis_hash(config: dict[str, Any]) -> str:
     if "sample" in cfg:
         cfg["sample"]["start"]=None
         cfg["sample"]["end"]=None
-    # v0.1.7 retains the v0.1.6 rule allowing one post-calibration edit: the inference block length must
+    # v0.1.8 retains the v0.1.6 rule allowing one post-calibration edit: the inference block length must
     # be filled with the exact outcome-blind value selected by calibration.
     if "inference" in cfg:
         cfg["inference"]["stationary_bootstrap_mean_block_swaps"]=None

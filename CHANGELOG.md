@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.8 — Binance timestamp portability fix
+
+- Fix Binance aggregate-trade target matching on environments where pandas preserves `datetime64[us]` resolution (notably pandas 3.x).
+- Convert all sparse-reference target/month-boundary timestamps explicitly to Unix microseconds instead of assuming nanosecond-backed integers.
+- Normalize acquisition-manifest output keys to POSIX paths so Windows and Linux produce the same auditable manifest schema.
+- Add an explicit microsecond-resolution regression test; full suite expands to 26 tests.
+- No Experiment 001 economic/governance rules changed; candidate-primary LP P&L remains unopened.
+
 ## 0.1.7 — Outcome-blind calibration data acquisition
 
 - Add one-command `fetch-calibration-data` acquisition for the complete v0.15 input set.

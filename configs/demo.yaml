@@ -1,6 +1,6 @@
 experiment_id: HOUSEEDGE-LP-DEMO
 status: SYNTHETIC_ONLY
-spec_version: 0.1.7
+spec_version: 0.1.8
 numeraire: USD
 pool:
   token0_symbol: WETH

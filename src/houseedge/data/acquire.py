@@ -212,7 +212,7 @@ def acquire_v015_inputs(
             "benchmark": "Aave v3 Base on-chain ReserveDataUpdated + historical data-provider state",
             "funding": "Hyperliquid public fundingHistory info endpoint",
         },
-        "outputs": {str(p.relative_to(root)): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in outputs},
+        "outputs": {p.relative_to(root).as_posix(): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in outputs},
     }
     manifest_path = root / "v015_acquisition_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
