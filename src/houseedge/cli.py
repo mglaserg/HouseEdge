@@ -69,6 +69,28 @@ def calibrate_design_cmd(
     print(json.dumps(result,indent=2,default=str))
 
 
+
+@app.command("rpc-preflight")
+def rpc_preflight_cmd(
+    config: str=DEFAULT_CONFIG,
+    rpc_url: str|None=None,
+    requested_chunk_blocks: int=10_000,
+):
+    """Probe whether the configured Base RPC is suitable for historical log backfills."""
+    from houseedge.data.uniswap_base import connect
+    from houseedge.data.base_rpc import probe_log_block_limit
+    cfg=load_yaml(config); spec=PoolSpec.from_config(cfg); w3=connect(rpc_url)
+    pool=spec.pool_address
+    supported=probe_log_block_limit(w3,pool,requested_chunk_blocks)
+    print({
+        "chain_id":w3.eth.chain_id,
+        "requested_chunk_blocks":requested_chunk_blocks,
+        "largest_tested_supported_log_range":supported,
+        "suitable_for_houseedge_backfill":bool(supported>10),
+    })
+    if supported<=10:
+        print("[yellow]This endpoint behaves like a 10-block eth_getLogs tier and is not practical for the multi-month HouseEdge backfill.[/yellow]")
+
 @app.command("fetch-calibration-data")
 def fetch_calibration_data_cmd(
     config: str=DEFAULT_CONFIG,

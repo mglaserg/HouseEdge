@@ -1,6 +1,6 @@
 [project]
 name = "houseedge-lp"
-version = "0.1.8"
+version = "0.1.9"
 description = "HouseEdge LP: preregistered AMM liquidity research and hedged event replay"
 requires-python = ">=3.11"
 dependencies = [

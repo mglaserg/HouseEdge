@@ -1,6 +1,6 @@
 experiment_id: HOUSEEDGE-LP-001
 status: CALIBRATION_REQUIRED
-spec_version: 0.1.8
+spec_version: 0.1.9
 registered_at: null
 thesis:
   counterparty: Liquidity-demanding traders whose orders reach the Uniswap v3 pool.

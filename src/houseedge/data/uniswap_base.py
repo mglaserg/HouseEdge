@@ -10,6 +10,7 @@ from web3 import Web3
 
 from houseedge.config import PoolSpec
 from houseedge.data.storage import write_frame
+from houseedge.data.base_rpc import get_event_logs_resilient
 
 FACTORY_ABI = [
     {"inputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint24","name":"fee","type":"uint24"}],"name":"getPool","outputs":[{"internalType":"address","name":"pool","type":"address"}],"stateMutability":"view","type":"function"}
@@ -124,7 +125,7 @@ def fetch_events(
         end=min(start+chunk_blocks-1, int(to_block))
         for name in ("Swap", "Mint", "Burn", "SetFeeProtocol"):
             event=getattr(pool.events, name)
-            logs=event().get_logs(from_block=start, to_block=end)
+            logs=get_event_logs_resilient(event, from_block=start, to_block=end)
             rows.extend(_event_rows(logs, name, spec))
     rows=_attach_block_timestamps(w3, rows, workers=workers) if rows else []
     df=pd.DataFrame(rows)

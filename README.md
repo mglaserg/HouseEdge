@@ -184,3 +184,13 @@ uv run streamlit run dashboard/app.py
 ## Safety / execution scope
 
 There are no private-key fields, wallet signers, transaction broadcasters, or live LP execution controls in this release. The micro-live pilot is a later telemetry/reconciliation task after v0.15 selects a viable minimum size; it is not part of the primary statistical sample.
+
+### Base RPC preflight (v0.1.9+)
+
+Before the multi-month v0.15 backfill, probe the configured RPC:
+
+```bash
+uv run houseedge rpc-preflight
+```
+
+HouseEdge intentionally refuses a very large historical acquisition if the endpoint only accepts ~10 blocks per `eth_getLogs` request. This is common on restricted/free RPC tiers and would require millions of calls for Experiment 001. Use a provider/tier with materially larger historical log ranges. The acquisition path still retries and recursively splits occasional oversized/result-heavy ranges.

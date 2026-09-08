@@ -10,7 +10,7 @@ import pandas as pd
 
 from houseedge.config import PoolSpec, canonical_hash
 from houseedge.data.aave_base import fetch_usdc_supply_rates
-from houseedge.data.base_rpc import block_at_or_after, block_at_or_before, window_timestamps
+from houseedge.data.base_rpc import block_at_or_after, block_at_or_before, window_timestamps, validate_historical_log_plan
 from houseedge.data.binance_public import build_reference
 from houseedge.data.hyperliquid import fetch_funding_history
 from houseedge.data.reference import normalize_reference
@@ -145,10 +145,17 @@ def acquire_v015_inputs(
         "candidate": (block_at_or_after(w3, cand_start), block_at_or_before(w3, cand_end)),
     }
 
+    total_blocks = sum((b1 - b0 + 1) for b0, b1 in ranges.values())
+    effective_chunk_blocks = validate_historical_log_plan(
+        w3, pool, requested_chunk_blocks=int(chunk_blocks), total_blocks=int(total_blocks)
+    )
+    if effective_chunk_blocks != int(chunk_blocks):
+        emit(f"RPC log-range probe reduced chunk size: {int(chunk_blocks):,} -> {effective_chunk_blocks:,} blocks")
+
     event_frames = {}
     for name, (b0, b1) in ranges.items():
         emit(f"Fetching Base Uniswap v3 {name} Mint/Burn/Swap/SetFeeProtocol events: {b0:,}..{b1:,}")
-        ev = fetch_events(w3, pool, spec, b0, b1, chunk_blocks=chunk_blocks, workers=workers)
+        ev = fetch_events(w3, pool, spec, b0, b1, chunk_blocks=effective_chunk_blocks, workers=workers)
         initial_fee = read_fee_protocol_at_block(w3, pool, max(0, b0 - 1))
         ev = attach_protocol_fee_state(ev, initial_fee)
         event_frames[name] = ev
@@ -168,7 +175,7 @@ def acquire_v015_inputs(
     benchmarks = {}
     for name, (b0, b1) in ranges.items():
         emit(f"Reconstructing Aave v3 Base USDC {name} supply APY on-chain")
-        rates = fetch_usdc_supply_rates(w3, b0, b1, asset=cfg["pool"]["token1_address"], chunk_blocks=chunk_blocks, workers=workers)
+        rates = fetch_usdc_supply_rates(w3, b0, b1, asset=cfg["pool"]["token1_address"], chunk_blocks=effective_chunk_blocks, workers=workers)
         benchmarks[name] = rates
         write_frame(rates, (cal_dir if name == "calibration" else cand_dir) / "aave_base_usdc_apy.parquet")
 
@@ -211,6 +218,7 @@ def acquire_v015_inputs(
             "reference": "Binance public ETHUSDC aggregate-trade + 5m-kline archives",
             "benchmark": "Aave v3 Base on-chain ReserveDataUpdated + historical data-provider state",
             "funding": "Hyperliquid public fundingHistory info endpoint",
+            "rpc_effective_log_chunk_blocks": effective_chunk_blocks,
         },
         "outputs": {p.relative_to(root).as_posix(): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in outputs},
     }

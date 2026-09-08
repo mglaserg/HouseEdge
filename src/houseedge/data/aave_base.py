@@ -4,7 +4,7 @@ import math
 import pandas as pd
 from typing import Any
 
-from houseedge.data.base_rpc import attach_block_timestamps, block_timestamp
+from houseedge.data.base_rpc import attach_block_timestamps, block_timestamp, get_event_logs_resilient
 
 AAVE_V3_BASE_POOL = "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5"
 AAVE_V3_BASE_DATA_PROVIDER = "0x0F43731EB8d45A581f4a36DD74F5f358bc90C73A"
@@ -81,7 +81,7 @@ def fetch_usdc_supply_rates(
     event = pool.events.ReserveDataUpdated
     for start in range(int(from_block), int(to_block) + 1, int(chunk_blocks)):
         end = min(start + int(chunk_blocks) - 1, int(to_block))
-        logs = event().get_logs(from_block=start, to_block=end, argument_filters={"reserve": asset})
+        logs = get_event_logs_resilient(event, from_block=start, to_block=end, argument_filters={"reserve": asset})
         for ev in logs:
             args = ev["args"]
             rows.append({
