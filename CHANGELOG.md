@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.7 — Outcome-blind calibration data acquisition
+
+- Add one-command `fetch-calibration-data` acquisition for the complete v0.15 input set.
+- Resolve preregistered UTC windows to Base blocks without outcome inspection.
+- Pull calibration/candidate Uniswap v3 event tapes and reconstruct historical protocol-fee state.
+- Add sparse Binance ETH/USDC aggregate-trade reference extraction plus separate 5-minute regime data from official public archives.
+- Add on-chain Aave v3 Base USDC supply-rate reconstruction.
+- Add paginated Hyperliquid ETH historical funding acquisition.
+- Derive power/noise increments from the separate calibration window only; candidate-primary LP P&L remains unopened.
+- Add an acquisition manifest with config hash, block ranges, output hashes, and an explicit outcome-blind flag.
+- Add reference-role flags so regime-only observations cannot enter backward fair-value alignment.
+- Expand tests to 25, covering archive reduction, reference-role isolation, Aave rate conversion, calibration-only increment derivation, and outcome-blind orchestration.
+
+
 ## 0.1.6 — Experiment 001 configuration freeze
 
 - Freeze the Base WETH/USDC 5 bp pool address and outcome-blind calibration/candidate windows.

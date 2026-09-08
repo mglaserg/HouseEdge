@@ -25,7 +25,7 @@ def normalize_reference(df: pd.DataFrame) -> pd.DataFrame:
     if "mid" not in out:
         if "price" in out:
             # Historical trade tape: treat the observed trade price as the
-            # preregistered reference value. v0.1.6 uses backward-only alignment.
+            # preregistered reference value. Experiment 001 uses backward-only alignment.
             out["mid"]=pd.to_numeric(out["price"])
         elif "last_trade" in out:
             out["mid"]=pd.to_numeric(out["last_trade"])

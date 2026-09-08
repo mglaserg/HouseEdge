@@ -9,3 +9,7 @@ data/reference/
 runs/
 !data/raw/.gitkeep
 !data/reference/.gitkeep
+data/calibration/
+data/candidate/
+data/cache/
+data/v015_acquisition_manifest.json

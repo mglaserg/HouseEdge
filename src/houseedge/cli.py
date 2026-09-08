@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -66,6 +67,32 @@ def calibrate_design_cmd(
         cfg=cfg,output_dir=output,
     )
     print(json.dumps(result,indent=2,default=str))
+
+
+@app.command("fetch-calibration-data")
+def fetch_calibration_data_cmd(
+    config: str=DEFAULT_CONFIG,
+    output_root: str="data",
+    rpc_url: str|None=None,
+    chunk_blocks: int=10000,
+    workers: int=12,
+    force_downloads: bool=False,
+):
+    """Acquire every outcome-blind real-data input required by v0.15 calibration.
+
+    Replays only the separate calibration window to estimate power noise. The
+    candidate-primary LP outcome remains unopened.
+    """
+    from houseedge.data.acquire import acquire_v015_inputs
+    cfg=load_yaml(config)
+    if rpc_url is None and not os.environ.get(cfg.get("chain",{}).get("rpc_env","BASE_RPC_URL")):
+        print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. The public Base RPC may fail on the multi-month historical log pull; an archive/log-capable provider is strongly recommended.")
+    manifest=acquire_v015_inputs(
+        cfg,output_root=output_root,rpc_url=rpc_url,chunk_blocks=chunk_blocks,workers=workers,force_downloads=force_downloads,
+        progress=lambda msg: print(f"[cyan]•[/cyan] {msg}"),
+    )
+    print(json.dumps(manifest,indent=2,default=str))
+    print(f"\n[bold green]Outcome-blind acquisition complete.[/bold green] Manifest: {Path(output_root)/'v015_acquisition_manifest.json'}")
 
 @app.command("gate0")
 def gate0_cmd(annualized_vol: float, daily_volume_usd: float, active_capital_usd: float, lp_fee_bps: float=3.75):

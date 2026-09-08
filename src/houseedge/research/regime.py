@@ -23,7 +23,10 @@ def daily_realized_variance(reference: pd.DataFrame, sampling_minutes: int = 5) 
     """Annualized daily realized variance from outcome-blind ETH reference prices."""
     if "timestamp" not in reference or "mid" not in reference:
         raise ValueError("reference requires timestamp and mid")
-    x = reference[["timestamp", "mid"]].copy()
+    x = reference.copy()
+    if "regime_eligible" in x:
+        x=x[x["regime_eligible"].fillna(True).astype(bool)].copy()
+    x = x[["timestamp", "mid"]].copy()
     x["timestamp"] = pd.to_datetime(x["timestamp"], utc=True)
     x["mid"] = pd.to_numeric(x["mid"])
     x = x.dropna().sort_values("timestamp").set_index("timestamp")

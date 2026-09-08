@@ -6,7 +6,10 @@ import pandas as pd
 
 def align_reference(swaps: pd.DataFrame, reference: pd.DataFrame, tolerance_seconds: float = 3.0, shift_seconds: float = 0.0) -> pd.DataFrame:
     s=swaps.copy().sort_values("timestamp")
-    r=reference.copy().sort_values("timestamp")
+    r=reference.copy()
+    if "alignment_eligible" in r:
+        r=r[r["alignment_eligible"].fillna(True).astype(bool)].copy()
+    r=r.sort_values("timestamp")
     s["timestamp"]=pd.to_datetime(s["timestamp"], utc=True)
     r["timestamp"]=pd.to_datetime(r["timestamp"], utc=True)+pd.to_timedelta(shift_seconds, unit="s")
     r=r.rename(columns={"timestamp":"quote_timestamp","mid":"ref_mid"})
