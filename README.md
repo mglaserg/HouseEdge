@@ -1,8 +1,8 @@
-# HouseEdge LP v0.1.8
+# HouseEdge LP v0.2.0
 
 HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-v0.1.8 is the portable outcome-blind data-acquisition release over the frozen v0.1.6 Experiment 001 design. It deliberately does **not** open the candidate-primary LP outcome. Its job is to make the full v0.15 calibration reproducible from public/on-chain data on Lubuntu.
+v0.2.0 moves HouseEdge's multi-month Base event acquisition from JSON-RPC `eth_getLogs` to Envio HyperSync. Alchemy/Base RPC remains in the workflow only for lightweight block-boundary resolution and a handful of historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
 
 ## Core rule
 
@@ -12,20 +12,17 @@ Counterparty -> Compensation -> Costs -> Falsifier -> EdgeLab -> Build
 
 A KILL is a successful research outcome. A measurement failure is VOID, not KILL. Range optimization cannot rescue a primary KILL.
 
-## What changed in v0.1.8
+## What changed in v0.2.0
 
-- Make Binance archive timestamp matching resolution-independent across pandas 2.x/3.x by converting explicitly to Unix microseconds.
-- Normalize acquisition-manifest output paths to POSIX form on every OS.
+- Make **Envio HyperSync** the default bulk historical source for Base Uniswap v3 `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` logs.
+- Use HyperSync for Aave v3 Base `ReserveDataUpdated` history as well, so the benchmark side cannot fall back into restricted multi-month `eth_getLogs` scans.
+- Keep `BASE_RPC_URL` for timestamp-to-block boundary resolution and one historical state seed read per window (Uniswap `slot0.feeProtocol` and Aave reserve state). A keyed Alchemy Free endpoint is sufficient for this lightweight/archive-state role.
+- Add `houseedge hypersync-preflight` to verify the Envio token, Base chain id, and archive height before downloading data.
+- Record HyperSync URL/chain/archive provenance in acquisition manifest schema v2 without ever storing the API token.
+- Keep the old RPC bulk path available only when explicitly configured as `historical_data.event_source: RPC`; Experiment 001 defaults to HyperSync and does not silently fall back.
+- Add regression tests that fail if HyperSync-mode acquisition invokes the RPC log-range probe.
 
-- Add `houseedge fetch-calibration-data`, which automatically builds every real-data file consumed by `calibrate-design`.
-- Resolve the preregistered calibration/candidate UTC windows to Base block ranges by binary search.
-- Pull calibration and candidate Uniswap v3 `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` events and reconstruct historical protocol-fee state.
-- Use Binance public ETH/USDC monthly archives: sparse aggregate-trade rows for the exact backward-only reference and 5-minute klines strictly for outcome-blind realized-volatility/regime measurement.
-- Reconstruct Aave v3 Base USDC supply APY directly from on-chain `ReserveDataUpdated` events plus the historical rate at the window start; no third-party benchmark API is required.
-- Fetch complete Hyperliquid ETH funding history with documented pagination.
-- Replay **only the separate calibration window** to produce `excess_increments.parquet` for prospective power. Candidate-primary hedged LP P&L is never computed by acquisition.
-- Write `data/v015_acquisition_manifest.json` with source descriptions, block ranges, config hash, file hashes, and `candidate_primary_pnl_opened: false`.
-- Add explicit reference-row roles so 5-minute regime klines can never masquerade as fresh trade-tape observations in the primary timestamp-alignment rule.
+The v0.1.7/v0.1.8 Binance timestamp and outcome-blind acquisition fixes remain in force.
 
 ## Frozen v0.1.6 design retained
 
@@ -58,13 +55,18 @@ houseedge discover-pool
 
 ### 2. Acquire all outcome-blind v0.15 data
 
-For the multi-month Base log pull, set an archive/log-capable Base RPC. The public Base RPC is useful for plumbing but is not appropriate for this workload.
+Bulk historical Base logs now come from Envio HyperSync. Create an Envio API token, keep it local, and use a keyed Base RPC (Alchemy Free is fine) for the small number of state/boundary reads.
 
 ```bash
-export BASE_RPC_URL="https://YOUR_ARCHIVE_CAPABLE_BASE_RPC"
+export ENVIO_API_TOKEN="YOUR_ENVIO_API_TOKEN"
+export BASE_RPC_URL="https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY"
 
+uv run houseedge hypersync-preflight
+uv run houseedge discover-pool
 uv run houseedge fetch-calibration-data
 ```
+
+`fetch-calibration-data` does **not** use your Alchemy endpoint for the multi-month Uniswap/Aave log scan when `historical_data.event_source: HYPERSYNC` (the Experiment 001 default).
 
 This automatically writes:
 
@@ -127,9 +129,9 @@ houseedge freeze \
 
 Freeze refuses to proceed if calibration did not pass, the spec is not `READY_TO_FREEZE`, or the prediction hash is not in the local prediction registry.
 
-## Eventual v0.2 primary run
+## Eventual primary outcome run
 
-v0.1.8 prepares governance **and acquires the v0.15 real-data inputs**, but **v0.2 still owes exact primary replay-state reconciliation and final real-data cost execution**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
+v0.2.0 prepares governance **and acquires the v0.15 real-data inputs**, but **v0.2 still owes exact primary replay-state reconciliation and final real-data cost execution**. The primary runner is intentionally incapable of returning GO unless measurement validity is supplied.
 
 The frozen outcome will use:
 
@@ -163,7 +165,7 @@ The primary historical reference is Binance spot ETH/USDC trade tape. The contem
 
 ## Protocol fees
 
-Do not hard-code “LPs keep 75%.” v0.1.8 reads the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
+Do not hard-code “LPs keep 75%.” v0.2.0 reconstructs the pool’s packed historical `feeProtocol` state and applies the relevant token0/token1 protocol denominator to each swap.
 
 ## Synthetic demo
 
@@ -185,12 +187,12 @@ uv run streamlit run dashboard/app.py
 
 There are no private-key fields, wallet signers, transaction broadcasters, or live LP execution controls in this release. The micro-live pilot is a later telemetry/reconciliation task after v0.15 selects a viable minimum size; it is not part of the primary statistical sample.
 
-### Base RPC preflight (v0.1.9+)
+### Historical-provider preflight
 
-Before the multi-month v0.15 backfill, probe the configured RPC:
+Experiment 001 defaults to HyperSync for bulk logs:
 
 ```bash
-uv run houseedge rpc-preflight
+uv run houseedge hypersync-preflight
 ```
 
-HouseEdge intentionally refuses a very large historical acquisition if the endpoint only accepts ~10 blocks per `eth_getLogs` request. This is common on restricted/free RPC tiers and would require millions of calls for Experiment 001. Use a provider/tier with materially larger historical log ranges. The acquisition path still retries and recursively splits occasional oversized/result-heavy ranges.
+`rpc-preflight` is retained for diagnostics or an explicitly configured RPC bulk fallback, but it is no longer part of the normal v0.2.0 acquisition path. A 10-block Alchemy Free `eth_getLogs` limit therefore does not block Experiment 001.

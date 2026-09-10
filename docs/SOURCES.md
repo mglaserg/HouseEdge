@@ -15,4 +15,8 @@ Checked 2026-09-08.
 - Aave v3 protocol subgraph/rate conventions and historical queries: https://github.com/aave/aave-v3-core/tree/master
 - Coinbase Exchange public WebSocket market-data feed (prospective diagnostics only): https://docs.cdp.coinbase.com/exchange/websocket-feed/overview
 
-The public Base RPC is rate-limited and is not suitable for the multi-month Experiment 001 acquisition. Use an archive/log-capable Base provider for `fetch-calibration-data`.
+Experiment 001 v0.2.0 uses Envio HyperSync for multi-month Base logs. `BASE_RPC_URL` is retained only for block-boundary resolution and sparse historical state reads; the bulk acquisition no longer depends on RPC `eth_getLogs` capacity.
+
+- Envio HyperSync Python client, API token setup, streaming and Base endpoint: https://github.com/enviodev/hypersync-client-python
+- Envio HyperSync Base endpoint: https://base.hypersync.xyz
+- Alchemy plan/archive-data reference (used only for lightweight historical state reads): https://www.alchemy.com/docs/reference/pricing-plans

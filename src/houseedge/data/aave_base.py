@@ -95,3 +95,58 @@ def fetch_usdc_supply_rates(
     out = pd.DataFrame(rows).sort_values(["block_number","transaction_index","log_index"]).reset_index(drop=True)
     out["apy"] = out["liquidity_rate_ray"].map(ray_apr_to_apy)
     return out[["timestamp","apy","liquidity_rate_ray","block_number","source"]]
+
+
+
+def fetch_usdc_supply_rates_hypersync(
+    w3: Any,
+    from_block: int,
+    to_block: int,
+    *,
+    settings,
+    asset: str = BASE_USDC,
+    pool_address: str = AAVE_V3_BASE_POOL,
+    data_provider_address: str = AAVE_V3_BASE_DATA_PROVIDER,
+) -> pd.DataFrame:
+    """Reconstruct Base USDC supply APY using HyperSync for bulk rate-update logs.
+
+    RPC is used only once for the initial historical reserve state immediately
+    before the window. This avoids the provider's eth_getLogs range limits.
+    """
+    from web3 import Web3
+    from houseedge.data.hypersync_base import fetch_decoded_event_logs, indexed_address_topic
+
+    asset = Web3.to_checksum_address(asset)
+    provider = w3.eth.contract(address=Web3.to_checksum_address(data_provider_address), abi=DATA_PROVIDER_ABI)
+    initial_block = max(0, int(from_block) - 1)
+    reserve_data = provider.functions.getReserveData(asset).call(block_identifier=initial_block)
+    rows = [{
+        "timestamp": block_timestamp(w3, initial_block),
+        "block_number": initial_block,
+        "transaction_index": -1,
+        "log_index": -1,
+        "liquidity_rate_ray": int(reserve_data[5]),
+        "source": "aave_v3_base_onchain_initial_rpc_state",
+    }]
+    event_abi = POOL_ABI[0]
+    decoded = fetch_decoded_event_logs(
+        address=pool_address,
+        event_abi=event_abi,
+        from_block=from_block,
+        to_block=to_block,
+        settings=settings,
+        indexed_topic_filters=[[indexed_address_topic(asset)]],
+    )
+    for ev, timestamp in decoded:
+        args = ev["args"]
+        rows.append({
+            "timestamp": timestamp,
+            "block_number": int(ev["blockNumber"]),
+            "transaction_index": int(ev.get("transactionIndex", 0)),
+            "log_index": int(ev["logIndex"]),
+            "liquidity_rate_ray": int(args["liquidityRate"]),
+            "source": "aave_v3_base_ReserveDataUpdated_hypersync",
+        })
+    out = pd.DataFrame(rows).sort_values(["block_number", "transaction_index", "log_index"]).reset_index(drop=True)
+    out["apy"] = out["liquidity_rate_ray"].map(ray_apr_to_apy)
+    return out[["timestamp", "apy", "liquidity_rate_ray", "block_number", "source"]]

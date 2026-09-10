@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 — HyperSync historical ingestion
+
+- Make Envio HyperSync the default bulk historical source for Base Uniswap v3 logs in Experiment 001.
+- Move Aave v3 Base `ReserveDataUpdated` history to HyperSync as well; RPC is used only to seed the starting historical state.
+- Add `houseedge hypersync-preflight` and require Base chain id 8453 before acquisition.
+- Keep keyed Base RPC for block-window resolution and sparse historical `eth_call` state reads; restricted `eth_getLogs` tiers no longer block the normal workflow.
+- Do not silently fall back to RPC bulk logs: `historical_data.rpc_fallback_allowed` remains false for Experiment 001.
+- Upgrade the acquisition manifest to schema v2 with historical-source provenance while never persisting the Envio API token.
+- Add HyperSync client/query fixtures and a regression test proving HyperSync acquisition never invokes the RPC log-range probe.
+- No Experiment 001 economic hurdle, hedge rule, primary reference convention, or outcome-blindness rule changed.
+
+
+## 0.1.9 - 2026-09-08
+- Add `houseedge rpc-preflight` to probe Base RPC `eth_getLogs` range capability before a historical backfill.
+- Fail fast when a provider behaves like Alchemy Free's 10-block log tier instead of launching millions of RPC requests.
+- Add retry + recursive range splitting for result-heavy/intermittently rejected event-log requests.
+- Apply resilient log fetching to both Uniswap v3 and Aave benchmark event histories.
+- Record the effective RPC log chunk size in the v0.15 acquisition manifest.
+- No Experiment 001 economics, preregistered hurdle, primary window, or hedge rule changed.
+
 ## 0.1.8 — Binance timestamp portability fix
 
 - Fix Binance aggregate-trade target matching on environments where pandas preserves `datetime64[us]` resolution (notably pandas 3.x).
@@ -56,11 +76,3 @@
 
 - Initial HouseEdge LP Experiment 001 scaffold.
 - Gate-0 screen, Base Uniswap v3 event ingestion, reference-price alignment, markouts/nulls, discrete hedge replay, stationary bootstrap, passive capacity sweep, synthetic demo, and separate read-only dashboard.
-
-## 0.1.9 - 2026-09-08
-- Add `houseedge rpc-preflight` to probe Base RPC `eth_getLogs` range capability before a historical backfill.
-- Fail fast when a provider behaves like Alchemy Free's 10-block log tier instead of launching millions of RPC requests.
-- Add retry + recursive range splitting for result-heavy/intermittently rejected event-log requests.
-- Apply resilient log fetching to both Uniswap v3 and Aave benchmark event histories.
-- Record the effective RPC log chunk size in the v0.15 acquisition manifest.
-- No Experiment 001 economics, preregistered hurdle, primary window, or hedge rule changed.

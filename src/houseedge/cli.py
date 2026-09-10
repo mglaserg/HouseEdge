@@ -70,6 +70,14 @@ def calibrate_design_cmd(
 
 
 
+@app.command("hypersync-preflight")
+def hypersync_preflight_cmd(config: str=DEFAULT_CONFIG):
+    """Verify Envio HyperSync credentials and Base chain connectivity."""
+    from houseedge.data.hypersync_base import preflight, settings_from_config
+    cfg=load_yaml(config)
+    result=preflight(settings_from_config(cfg))
+    print(result)
+
 @app.command("rpc-preflight")
 def rpc_preflight_cmd(
     config: str=DEFAULT_CONFIG,
@@ -103,12 +111,21 @@ def fetch_calibration_data_cmd(
     """Acquire every outcome-blind real-data input required by v0.15 calibration.
 
     Replays only the separate calibration window to estimate power noise. The
-    candidate-primary LP outcome remains unopened.
+    candidate-primary LP outcome remains unopened. HyperSync is the default
+    bulk historical source; Base RPC is used only for block boundaries and a
+    small number of historical state reads.
     """
     from houseedge.data.acquire import acquire_v015_inputs
     cfg=load_yaml(config)
-    if rpc_url is None and not os.environ.get(cfg.get("chain",{}).get("rpc_env","BASE_RPC_URL")):
-        print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. The public Base RPC may fail on the multi-month historical log pull; an archive/log-capable provider is strongly recommended.")
+    historical_source=str(cfg.get("historical_data",{}).get("event_source","RPC")).upper()
+    if historical_source == "HYPERSYNC":
+        token_env=cfg.get("historical_data",{}).get("hypersync",{}).get("api_token_env","ENVIO_API_TOKEN")
+        if not os.environ.get(token_env):
+            print(f"[yellow]Warning:[/yellow] {token_env} is not set. HyperSync bulk acquisition requires an Envio API token.")
+        if rpc_url is None and not os.environ.get(cfg.get("chain",{}).get("rpc_env","BASE_RPC_URL")):
+            print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. HyperSync handles bulk logs, but HouseEdge still needs a Base RPC for timestamp-to-block resolution and historical state seed reads.")
+    elif rpc_url is None and not os.environ.get(cfg.get("chain",{}).get("rpc_env","BASE_RPC_URL")):
+        print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. RPC-mode historical acquisition requires a historical/log-capable provider.")
     manifest=acquire_v015_inputs(
         cfg,output_root=output_root,rpc_url=rpc_url,chunk_blocks=chunk_blocks,workers=workers,force_downloads=force_downloads,
         progress=lambda msg: print(f"[cyan]•[/cyan] {msg}"),

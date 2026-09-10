@@ -10,6 +10,7 @@ from houseedge.data import acquire
 
 def test_acquisition_manifest_stays_outcome_blind(tmp_path, monkeypatch):
     cfg=load_yaml("configs/experiment_001.yaml")
+    cfg["historical_data"]["event_source"]="RPC"
     fake_w3=object()
     calls={"n":0}
 

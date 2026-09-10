@@ -1,6 +1,6 @@
 experiment_id: HOUSEEDGE-LP-001
 status: CALIBRATION_REQUIRED
-spec_version: 0.1.9
+spec_version: 0.2.0
 registered_at: null
 thesis:
   counterparty: Liquidity-demanding traders whose orders reach the Uniswap v3 pool.
@@ -145,3 +145,11 @@ variants:
   note: Alternative hedge bands, ranges, pools, reference conventions, and hedge venues
     are new registered experiments. Markouts, nulls, alignment shifts, JIT diagnostics,
     and passive capacity are diagnostics unless separately promoted before freeze.
+historical_data:
+  event_source: HYPERSYNC
+  rpc_role: state_validation_and_block_boundaries_only
+  hypersync:
+    url: https://base.hypersync.xyz
+    api_token_env: ENVIO_API_TOKEN
+    require_chain_id: 8453
+  rpc_fallback_allowed: false

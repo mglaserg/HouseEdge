@@ -136,6 +136,19 @@ def acquire_v015_inputs(
     if not pool:
         raise RuntimeError("Experiment 001 requires a frozen pool address before acquisition")
 
+    historical_cfg = cfg.get("historical_data", {})
+    historical_source = str(historical_cfg.get("event_source", "RPC")).upper()
+    if historical_source not in {"RPC", "HYPERSYNC"}:
+        raise ValueError(f"Unsupported historical_data.event_source={historical_source!r}; expected RPC or HYPERSYNC")
+
+    hypersync_settings = None
+    hypersync_status = None
+    if historical_source == "HYPERSYNC":
+        from houseedge.data.hypersync_base import preflight as hypersync_preflight, settings_from_config
+        hypersync_settings = settings_from_config(cfg)
+        emit(f"Checking Envio HyperSync Base endpoint: {hypersync_settings.url}")
+        hypersync_status = hypersync_preflight(hypersync_settings)
+
     cal_start, cal_end = _window(cfg, "calibration_window")
     cand_start, cand_end = _window(cfg, "candidate_primary_window")
 
@@ -145,17 +158,26 @@ def acquire_v015_inputs(
         "candidate": (block_at_or_after(w3, cand_start), block_at_or_before(w3, cand_end)),
     }
 
-    total_blocks = sum((b1 - b0 + 1) for b0, b1 in ranges.values())
-    effective_chunk_blocks = validate_historical_log_plan(
-        w3, pool, requested_chunk_blocks=int(chunk_blocks), total_blocks=int(total_blocks)
-    )
-    if effective_chunk_blocks != int(chunk_blocks):
-        emit(f"RPC log-range probe reduced chunk size: {int(chunk_blocks):,} -> {effective_chunk_blocks:,} blocks")
+    effective_chunk_blocks = None
+    if historical_source == "RPC":
+        total_blocks = sum((b1 - b0 + 1) for b0, b1 in ranges.values())
+        effective_chunk_blocks = validate_historical_log_plan(
+            w3, pool, requested_chunk_blocks=int(chunk_blocks), total_blocks=int(total_blocks)
+        )
+        if effective_chunk_blocks != int(chunk_blocks):
+            emit(f"RPC log-range probe reduced chunk size: {int(chunk_blocks):,} -> {effective_chunk_blocks:,} blocks")
 
     event_frames = {}
     for name, (b0, b1) in ranges.items():
-        emit(f"Fetching Base Uniswap v3 {name} Mint/Burn/Swap/SetFeeProtocol events: {b0:,}..{b1:,}")
-        ev = fetch_events(w3, pool, spec, b0, b1, chunk_blocks=effective_chunk_blocks, workers=workers)
+        if historical_source == "HYPERSYNC":
+            from houseedge.data.hypersync_base import fetch_uniswap_v3_events
+            emit(f"Fetching Base Uniswap v3 {name} events via HyperSync: {b0:,}..{b1:,}")
+            ev = fetch_uniswap_v3_events(pool, spec, b0, b1, settings=hypersync_settings)
+        else:
+            emit(f"Fetching Base Uniswap v3 {name} events via RPC: {b0:,}..{b1:,}")
+            ev = fetch_events(w3, pool, spec, b0, b1, chunk_blocks=int(effective_chunk_blocks), workers=workers)
+        # Protocol-fee history is carried in SetFeeProtocol events; a single
+        # historical RPC state read seeds the state immediately before each window.
         initial_fee = read_fee_protocol_at_block(w3, pool, max(0, b0 - 1))
         ev = attach_protocol_fee_state(ev, initial_fee)
         event_frames[name] = ev
@@ -174,8 +196,18 @@ def acquire_v015_inputs(
 
     benchmarks = {}
     for name, (b0, b1) in ranges.items():
-        emit(f"Reconstructing Aave v3 Base USDC {name} supply APY on-chain")
-        rates = fetch_usdc_supply_rates(w3, b0, b1, asset=cfg["pool"]["token1_address"], chunk_blocks=effective_chunk_blocks, workers=workers)
+        if historical_source == "HYPERSYNC":
+            from houseedge.data.aave_base import fetch_usdc_supply_rates_hypersync
+            emit(f"Reconstructing Aave v3 Base USDC {name} supply APY via HyperSync + one RPC seed read")
+            rates = fetch_usdc_supply_rates_hypersync(
+                w3, b0, b1, settings=hypersync_settings, asset=cfg["pool"]["token1_address"]
+            )
+        else:
+            emit(f"Reconstructing Aave v3 Base USDC {name} supply APY via RPC")
+            rates = fetch_usdc_supply_rates(
+                w3, b0, b1, asset=cfg["pool"]["token1_address"],
+                chunk_blocks=int(effective_chunk_blocks), workers=workers
+            )
         benchmarks[name] = rates
         write_frame(rates, (cal_dir if name == "calibration" else cand_dir) / "aave_base_usdc_apy.parquet")
 
@@ -203,8 +235,35 @@ def acquire_v015_inputs(
         cand_dir / "hyperliquid_eth_funding.parquet",
         cal_dir / "excess_increments.parquet",
     ]
+    sources = {
+        "bulk_historical_source": historical_source,
+        "pool_events": (
+            "Envio HyperSync Base / Uniswap v3 pool logs"
+            if historical_source == "HYPERSYNC"
+            else "Base JSON-RPC / Uniswap v3 pool logs"
+        ),
+        "reference": "Binance public ETHUSDC aggregate-trade + 5m-kline archives",
+        "benchmark": (
+            "Aave v3 Base initial reserve state via RPC + ReserveDataUpdated via Envio HyperSync"
+            if historical_source == "HYPERSYNC"
+            else "Aave v3 Base on-chain ReserveDataUpdated + historical data-provider state via RPC"
+        ),
+        "funding": "Hyperliquid public fundingHistory info endpoint",
+        "rpc_role": (
+            "state_validation_and_block_boundaries_only"
+            if historical_source == "HYPERSYNC"
+            else "historical_logs_and_state"
+        ),
+    }
+    if historical_source == "HYPERSYNC":
+        sources["hypersync_url"] = hypersync_settings.url
+        sources["hypersync_chain_id"] = hypersync_status.get("chain_id") if hypersync_status else None
+        sources["hypersync_archive_height"] = hypersync_status.get("archive_height") if hypersync_status else None
+    else:
+        sources["rpc_effective_log_chunk_blocks"] = int(effective_chunk_blocks)
+
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "experiment_id": cfg["experiment_id"],
         "spec_sha256": canonical_hash(cfg),
         "outcome_blind": True,
@@ -213,13 +272,7 @@ def acquire_v015_inputs(
             "calibration": {"start": cal_start.isoformat(), "end": cal_end.isoformat(), "from_block": ranges["calibration"][0], "to_block": ranges["calibration"][1]},
             "candidate": {"start": cand_start.isoformat(), "end": cand_end.isoformat(), "from_block": ranges["candidate"][0], "to_block": ranges["candidate"][1]},
         },
-        "sources": {
-            "pool_events": "Base JSON-RPC / Uniswap v3 pool logs",
-            "reference": "Binance public ETHUSDC aggregate-trade + 5m-kline archives",
-            "benchmark": "Aave v3 Base on-chain ReserveDataUpdated + historical data-provider state",
-            "funding": "Hyperliquid public fundingHistory info endpoint",
-            "rpc_effective_log_chunk_blocks": effective_chunk_blocks,
-        },
+        "sources": sources,
         "outputs": {p.relative_to(root).as_posix(): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in outputs},
     }
     manifest_path = root / "v015_acquisition_manifest.json"
