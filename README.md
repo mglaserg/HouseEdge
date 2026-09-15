@@ -45,6 +45,8 @@ Python 3.11+ is supported. The project is designed around `uv`.
 uv sync --extra dev
 ```
 
+HouseEdge automatically loads `.env` from the working/project directory at CLI startup; existing shell environment variables take precedence. Copy `.env.example` to `.env` and fill in your local credentials.
+
 ## v0.15 workflow
 
 ### 1. Discover the Base WETH/USDC 5 bp pool

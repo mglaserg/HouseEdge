@@ -1,4 +1,12 @@
-# Changelog
+# HouseEdge Changelog
+
+## v0.2.1 — HyperSync hex normalization + .env loading
+
+- Normalize every HyperSync query address/topic to canonical `0x`-prefixed fixed-width Ethereum hex.
+- Fix `event_topic0()` for dependency versions where `HexBytes.hex()` returns bare hex, preventing HyperSync `parse query ... invalid hex prefix` failures.
+- Normalize decoded event topic lookup through the same helper.
+- Load project/local `.env` automatically at CLI startup with a dependency-free loader; shell environment variables take precedence.
+- Add regression tests for bare-hex HyperSync inputs and event signatures.
 
 ## 0.2.0 — HyperSync historical ingestion
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 import typer
+from houseedge.env import load_dotenv
 from rich import print
 
 from houseedge.config import load_yaml, PoolSpec
@@ -16,6 +17,9 @@ from houseedge.experiment import run_experiment, preflight_primary_inputs
 from houseedge.demo import synthetic_tape
 from houseedge.prereg import freeze_record, assert_frozen, seal_prediction, register_outcome_look, apply_calibration_selection
 from houseedge.calibration import run_design_calibration
+
+# Load a project/local .env automatically. Existing shell variables win.
+load_dotenv(override=False)
 
 app=typer.Typer(help="HouseEdge LP research CLI — no live execution or wallet signing.")
 DEFAULT_CONFIG="configs/experiment_001.yaml"

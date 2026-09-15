@@ -81,8 +81,10 @@ def _as_hex(value: Any, *, size_bytes: int | None = None) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
-        text = value
-        if not text.startswith("0x"):
+        text = value.strip()
+        if text.lower().startswith("0x"):
+            text = "0x" + text[2:]
+        else:
             text = "0x" + text
     elif isinstance(value, (bytes, bytearray, memoryview)):
         text = "0x" + bytes(value).hex()
@@ -105,7 +107,10 @@ def _as_hex(value: Any, *, size_bytes: int | None = None) -> str | None:
 def event_topic0(event_abi: dict) -> str:
     from web3 import Web3
     signature = f"{event_abi['name']}({','.join(i['type'] for i in event_abi['inputs'])})"
-    return Web3.keccak(text=signature).hex().lower()
+    # HexBytes.hex() has changed behavior across dependency versions: some
+    # releases return a bare hex string while HyperSync requires 0x-prefixed
+    # Ethereum hex values. Normalize explicitly at the adapter boundary.
+    return _as_hex(Web3.keccak(text=signature), size_bytes=32)  # type: ignore[return-value]
 
 
 def indexed_address_topic(address: str) -> str:
@@ -165,14 +170,19 @@ async def _stream_raw_logs_async(
     client = hypersync.HypersyncClient(
         hypersync.ClientConfig(url=settings.url, bearer_token=token)
     )
+    normalized_address = _as_hex(address, size_bytes=20)
+    normalized_topics = [
+        [_as_hex(topic, size_bytes=32) for topic in alternatives]
+        for alternatives in topic_filters
+    ]
     query = hypersync.Query(
         from_block=int(from_block),
         # HyperSync `to_block` is exclusive; HouseEdge ranges are inclusive.
         to_block=int(to_block) + 1,
         logs=[
             hypersync.LogSelection(
-                address=[address],
-                topics=topic_filters,
+                address=[normalized_address],
+                topics=normalized_topics,
             )
         ],
         field_selection=hypersync.FieldSelection(
@@ -296,7 +306,7 @@ def fetch_uniswap_v3_events(
     )
     rows: list[dict] = []
     for item in raw:
-        topic0 = HexBytes(item["topics"][0]).hex().lower()
+        topic0 = _as_hex(item["topics"][0], size_bytes=32)
         name = topic_to_name.get(topic0)
         if name is None:
             continue

@@ -93,3 +93,45 @@ def test_hypersync_query_uses_exclusive_to_block_and_joined_timestamps(monkeypat
     assert query.to_block == 21
     assert query.logs[0].topics == [["0x" + "11" * 32]]
     assert rows[0]["timestamp"] == pd.Timestamp(1_700_000_000, unit="s", tz="UTC")
+
+
+def test_hypersync_normalizes_bare_hex_query_values(monkeypatch):
+    captured = {}
+    monkeypatch.setitem(sys.modules, "hypersync", _fake_module(captured))
+    monkeypatch.setenv("ENVIO_API_TOKEN", "secret-test-token")
+    monkeypatch.setattr(
+        hs,
+        "_raw_log_to_dict",
+        lambda log, ts: {
+            "blockNumber": int(log.block_number),
+            "transactionIndex": int(log.transaction_index),
+            "logIndex": int(log.log_index),
+            "timestamp": ts[int(log.block_number)],
+        },
+    )
+    asyncio.run(hs._stream_raw_logs_async(
+        address="11" * 20,
+        topic_filters=[["22" * 32]],
+        from_block=10,
+        to_block=10,
+        settings=hs.HyperSyncSettings(),
+    ))
+    selection = captured["query"].logs[0]
+    assert selection.address == ["0x" + "11" * 20]
+    assert selection.topics == [["0x" + "22" * 32]]
+
+
+def test_event_topic0_is_always_prefixed(monkeypatch):
+    fake_web3 = types.ModuleType("web3")
+    class _BareDigest(bytes):
+        def hex(self):
+            return "c4" * 32
+    class _Web3:
+        @staticmethod
+        def keccak(text=None):
+            return _BareDigest(b"\xc4" * 32)
+    fake_web3.Web3 = _Web3
+    monkeypatch.setitem(sys.modules, "web3", fake_web3)
+    topic = hs.event_topic0({"name":"Swap","inputs":[]})
+    assert topic.startswith("0x")
+    assert len(topic) == 66
