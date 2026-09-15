@@ -121,6 +121,16 @@ def fetch_calibration_data_cmd(
     """
     from houseedge.data.acquire import acquire_v015_inputs
     cfg=load_yaml(config)
+    resolved_root=Path(output_root).expanduser().resolve()
+    resolved_root.mkdir(parents=True,exist_ok=True)
+    status_path=resolved_root/"v015_acquisition_status.json"
+    status_path.write_text(json.dumps({
+        "status":"STARTED",
+        "output_root":str(resolved_root),
+        "cwd":str(Path.cwd()),
+        "started_at":datetime.now(timezone.utc).isoformat(),
+    },indent=2),encoding="utf-8")
+    print(f"[bold]HouseEdge acquisition output:[/bold] {resolved_root}")
     historical_source=str(cfg.get("historical_data",{}).get("event_source","RPC")).upper()
     if historical_source == "HYPERSYNC":
         token_env=cfg.get("historical_data",{}).get("hypersync",{}).get("api_token_env","ENVIO_API_TOKEN")
@@ -130,12 +140,41 @@ def fetch_calibration_data_cmd(
             print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. HyperSync handles bulk logs, but HouseEdge still needs a Base RPC for timestamp-to-block resolution and historical state seed reads.")
     elif rpc_url is None and not os.environ.get(cfg.get("chain",{}).get("rpc_env","BASE_RPC_URL")):
         print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. RPC-mode historical acquisition requires a historical/log-capable provider.")
-    manifest=acquire_v015_inputs(
-        cfg,output_root=output_root,rpc_url=rpc_url,chunk_blocks=chunk_blocks,workers=workers,force_downloads=force_downloads,
-        progress=lambda msg: print(f"[cyan]•[/cyan] {msg}"),
-    )
+    try:
+        manifest=acquire_v015_inputs(
+            cfg,output_root=resolved_root,rpc_url=rpc_url,chunk_blocks=chunk_blocks,workers=workers,force_downloads=force_downloads,
+            progress=lambda msg: print(f"[cyan]•[/cyan] {msg}"),
+        )
+        manifest_path=resolved_root/"v015_acquisition_manifest.json"
+        if not manifest_path.exists() or manifest_path.stat().st_size == 0:
+            raise RuntimeError(f"Acquisition returned without a non-empty manifest at {manifest_path}")
+        missing=[]
+        for rel in manifest.get("outputs",{}):
+            artifact=resolved_root/rel
+            if not artifact.exists() or artifact.stat().st_size == 0:
+                missing.append(str(artifact))
+        if missing:
+            raise RuntimeError("Acquisition returned with missing/empty artifacts: "+", ".join(missing))
+        status_path.write_text(json.dumps({
+            "status":"COMPLETE",
+            "output_root":str(resolved_root),
+            "manifest":str(manifest_path),
+            "completed_at":datetime.now(timezone.utc).isoformat(),
+            "artifacts":[str(resolved_root/rel) for rel in manifest.get("outputs",{})],
+        },indent=2),encoding="utf-8")
+    except Exception as exc:
+        status_path.write_text(json.dumps({
+            "status":"FAILED",
+            "output_root":str(resolved_root),
+            "failed_at":datetime.now(timezone.utc).isoformat(),
+            "error_type":type(exc).__name__,
+            "error":str(exc),
+        },indent=2),encoding="utf-8")
+        print(f"[bold red]Acquisition failed.[/bold red] Diagnostic: {status_path}")
+        raise
     print(json.dumps(manifest,indent=2,default=str))
-    print(f"\n[bold green]Outcome-blind acquisition complete.[/bold green] Manifest: {Path(output_root)/'v015_acquisition_manifest.json'}")
+    print(f"\n[bold green]Outcome-blind acquisition complete.[/bold green] Manifest: {manifest_path}")
+    print(f"[green]Verified {len(manifest.get('outputs',{}))} non-empty artifacts under {resolved_root}[/green]")
 
 @app.command("gate0")
 def gate0_cmd(annualized_vol: float, daily_volume_usd: float, active_capital_usd: float, lp_fee_bps: float=3.75):

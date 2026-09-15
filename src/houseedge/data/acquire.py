@@ -121,7 +121,7 @@ def acquire_v015_inputs(
     Candidate-primary LP P&L is intentionally never replayed here.
     """
     emit = progress or (lambda _msg: None)
-    root = Path(output_root)
+    root = Path(output_root).expanduser().resolve()
     cal_dir = root / "calibration"
     cand_dir = root / "candidate"
     raw_dir = root / "raw"
@@ -183,6 +183,9 @@ def acquire_v015_inputs(
         event_frames[name] = ev
         path = raw_dir / f"{name}_events.parquet"
         write_frame(ev, path)
+        if not path.exists() or path.stat().st_size == 0:
+            raise RuntimeError(f"Failed to materialize event artifact: {path}")
+        emit(f"Wrote {path} ({path.stat().st_size:,} bytes)")
 
     symbol = "ETHUSDC"
     max_age = float(cfg["sample"]["primary_alignment"]["max_age_seconds"])
@@ -192,7 +195,11 @@ def acquire_v015_inputs(
         targets = event_frames[name].loc[event_frames[name]["event"].eq("Swap"), "timestamp"]
         ref = build_reference(symbol, start, end, targets, cache_dir, max_age_seconds=max_age, force=force_downloads)
         references[name] = ref
-        write_frame(ref, (cal_dir if name == "calibration" else cand_dir) / "eth_reference.parquet")
+        ref_path=(cal_dir if name == "calibration" else cand_dir) / "eth_reference.parquet"
+        write_frame(ref, ref_path)
+        if not ref_path.exists() or ref_path.stat().st_size == 0:
+            raise RuntimeError(f"Failed to materialize reference artifact: {ref_path}")
+        emit(f"Wrote {ref_path} ({ref_path.stat().st_size:,} bytes)")
 
     benchmarks = {}
     for name, (b0, b1) in ranges.items():
@@ -209,20 +216,32 @@ def acquire_v015_inputs(
                 chunk_blocks=int(effective_chunk_blocks), workers=workers
             )
         benchmarks[name] = rates
-        write_frame(rates, (cal_dir if name == "calibration" else cand_dir) / "aave_base_usdc_apy.parquet")
+        rate_path=(cal_dir if name == "calibration" else cand_dir) / "aave_base_usdc_apy.parquet"
+        write_frame(rates, rate_path)
+        if not rate_path.exists() or rate_path.stat().st_size == 0:
+            raise RuntimeError(f"Failed to materialize benchmark artifact: {rate_path}")
+        emit(f"Wrote {rate_path} ({rate_path.stat().st_size:,} bytes)")
 
     funding = {}
     for name, (start, end) in {"calibration": (cal_start, cal_end), "candidate": (cand_start, cand_end)}.items():
         emit(f"Fetching Hyperliquid ETH funding history for {name} window")
         f = fetch_funding_history("ETH", start, end)
         funding[name] = f
-        write_frame(f, (cal_dir if name == "calibration" else cand_dir) / "hyperliquid_eth_funding.parquet")
+        funding_path=(cal_dir if name == "calibration" else cand_dir) / "hyperliquid_eth_funding.parquet"
+        write_frame(f, funding_path)
+        if not funding_path.exists() or funding_path.stat().st_size == 0:
+            raise RuntimeError(f"Failed to materialize funding artifact: {funding_path}")
+        emit(f"Wrote {funding_path} ({funding_path.stat().st_size:,} bytes)")
 
     emit("Deriving calibration-only excess-return increments for prospective power")
     increments = derive_calibration_excess_increments(
         event_frames["calibration"], references["calibration"], funding["calibration"], benchmarks["calibration"], cfg
     )
-    write_frame(increments, cal_dir / "excess_increments.parquet")
+    increments_path=cal_dir / "excess_increments.parquet"
+    write_frame(increments, increments_path)
+    if not increments_path.exists() or increments_path.stat().st_size == 0:
+        raise RuntimeError(f"Failed to materialize calibration increments: {increments_path}")
+    emit(f"Wrote {increments_path} ({increments_path.stat().st_size:,} bytes)")
 
     outputs = [
         raw_dir / "calibration_events.parquet",

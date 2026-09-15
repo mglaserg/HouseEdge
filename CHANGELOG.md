@@ -1,3 +1,12 @@
+# Changelog
+
+## v0.2.2
+- Make `fetch-calibration-data` resolve and print an absolute output directory before work starts.
+- Write `v015_acquisition_status.json` immediately, with COMPLETE/FAILED terminal state.
+- Verify every acquisition artifact exists and is non-empty before reporting success.
+- Emit a message after each Parquet artifact is actually materialized.
+- Make dataframe writes atomic via temporary file + replace.
+
 # HouseEdge Changelog
 
 ## v0.2.1 — HyperSync hex normalization + .env loading

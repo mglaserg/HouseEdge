@@ -13,3 +13,4 @@ data/calibration/
 data/candidate/
 data/cache/
 data/v015_acquisition_manifest.json
+data/v015_acquisition_status.json

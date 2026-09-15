@@ -66,6 +66,8 @@ export BASE_RPC_URL="https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY"
 uv run houseedge hypersync-preflight
 uv run houseedge discover-pool
 uv run houseedge fetch-calibration-data
+
+The command prints the absolute output directory before acquisition begins and writes `data/v015_acquisition_status.json` immediately. It reports `STARTED`, `FAILED`, or `COMPLETE`; a successful return is only possible after all expected artifacts are verified non-empty.
 ```
 
 `fetch-calibration-data` does **not** use your Alchemy endpoint for the multi-month Uniswap/Aave log scan when `historical_data.event_source: HYPERSYNC` (the Experiment 001 default).
