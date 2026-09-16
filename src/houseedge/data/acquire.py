@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 from typing import Callable
 
@@ -14,7 +15,10 @@ from houseedge.data.base_rpc import block_at_or_after, block_at_or_before, windo
 from houseedge.data.binance_public import build_reference
 from houseedge.data.hyperliquid import fetch_funding_history
 from houseedge.data.reference import normalize_reference
-from houseedge.data.storage import write_frame
+from houseedge.data.storage import (
+    write_frame, mark_dataset_complete, dataset_complete,
+    artifact_size, artifact_sha256, read_frame, read_dataset_columns,
+)
 from houseedge.research.alignment import align_reference
 from houseedge.research.protocol_fee import attach_protocol_fee_state
 from houseedge.research.replay import replay_discrete_hedged_lp
@@ -27,6 +31,84 @@ def _sha256(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
+
+def _artifact_meta(path: Path) -> dict:
+    size = artifact_size(path)
+    if size <= 0:
+        raise RuntimeError(f"Expected non-empty acquisition artifact: {path}")
+    return {"sha256": artifact_sha256(path), "bytes": size, "kind": "dataset" if path.is_dir() else "file"}
+
+
+def _fetch_hypersync_event_dataset(
+    *,
+    w3,
+    pool: str,
+    spec,
+    b0: int,
+    b1: int,
+    settings,
+    dataset_dir: Path,
+    chunk_blocks: int,
+    emit,
+    force: bool = False,
+) -> Path:
+    """Fetch Uniswap events in bounded-memory block chunks to a resumable parquet dataset."""
+    from houseedge.data.hypersync_base import fetch_uniswap_v3_events
+    from houseedge.data.uniswap_base import read_fee_protocol_at_block
+
+    dataset_dir = Path(dataset_dir)
+    if force and dataset_dir.exists():
+        shutil.rmtree(dataset_dir)
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    if dataset_complete(dataset_dir) and not force:
+        emit(f"Using completed event dataset {dataset_dir}")
+        return dataset_dir
+
+    chunk_blocks = max(1, int(chunk_blocks))
+    total_blocks = int(b1) - int(b0) + 1
+    completed = 0
+    total_rows = 0
+    starts = list(range(int(b0), int(b1) + 1, chunk_blocks))
+    for i, start in enumerate(starts, 1):
+        end = min(start + chunk_blocks - 1, int(b1))
+        stem = f"part-{start:012d}-{end:012d}"
+        part = dataset_dir / f"{stem}.parquet"
+        done = dataset_dir / f"{stem}.done.json"
+        if done.exists() and not force:
+            meta = json.loads(done.read_text(encoding="utf-8"))
+            rows = int(meta.get("events", 0))
+            if rows > 0 and (not part.exists() or part.stat().st_size <= 0):
+                raise RuntimeError(f"Checkpoint says {rows} events but parquet part is missing: {part}")
+            completed += end - start + 1
+            total_rows += max(rows, 0)
+            emit(f"Resuming: kept {stem} ({i}/{len(starts)}, {rows:,} events)")
+            continue
+        emit(f"HyperSync events {i}/{len(starts)}: blocks {start:,}..{end:,}")
+        ev = fetch_uniswap_v3_events(pool, spec, start, end, settings=settings)
+        initial_fee = read_fee_protocol_at_block(w3, pool, max(0, start - 1))
+        ev = attach_protocol_fee_state(ev, initial_fee)
+        rows = len(ev)
+        if rows > 0:
+            write_frame(ev, part)
+        tmp_done = done.with_suffix(done.suffix + ".tmp")
+        tmp_done.write_text(json.dumps({
+            "from_block": start, "to_block": end, "events": rows,
+            "parquet": part.name if rows > 0 else None,
+        }, indent=2), encoding="utf-8")
+        tmp_done.replace(done)
+        total_rows += rows
+        completed += end - start + 1
+        pct = 100.0 * completed / max(total_blocks, 1)
+        emit(f"Checkpointed {stem} ({rows:,} events) — {pct:.1f}% of block window")
+
+    success = {
+        "from_block": int(b0), "to_block": int(b1), "chunk_blocks": chunk_blocks,
+        "parts": len(starts), "events": int(total_rows), "complete": True,
+    }
+    mark_dataset_complete(dataset_dir, success)
+    emit(f"Completed event dataset {dataset_dir} ({len(starts)} parts)")
+    return dataset_dir
 
 def _window(cfg: dict, key: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     w = cfg["calibration"][key]
@@ -168,31 +250,44 @@ def acquire_v015_inputs(
             emit(f"RPC log-range probe reduced chunk size: {int(chunk_blocks):,} -> {effective_chunk_blocks:,} blocks")
 
     event_frames = {}
+    event_paths = {}
     for name, (b0, b1) in ranges.items():
+        path = raw_dir / f"{name}_events.parquet"
         if historical_source == "HYPERSYNC":
-            from houseedge.data.hypersync_base import fetch_uniswap_v3_events
-            emit(f"Fetching Base Uniswap v3 {name} events via HyperSync: {b0:,}..{b1:,}")
-            ev = fetch_uniswap_v3_events(pool, spec, b0, b1, settings=hypersync_settings)
+            hs_chunk_blocks = int(historical_cfg.get("hypersync", {}).get("chunk_blocks", 100_000))
+            emit(f"Fetching Base Uniswap v3 {name} events via bounded-memory HyperSync dataset: {b0:,}..{b1:,}")
+            _fetch_hypersync_event_dataset(
+                w3=w3, pool=pool, spec=spec, b0=b0, b1=b1, settings=hypersync_settings,
+                dataset_dir=path, chunk_blocks=hs_chunk_blocks, emit=emit, force=force_downloads,
+            )
+            # Do not load the full multi-month dataset back into RAM here. Later
+            # stages project only the columns they need; the calibration replay loads
+            # the calibration window only when required.
+            ev = None
         else:
             emit(f"Fetching Base Uniswap v3 {name} events via RPC: {b0:,}..{b1:,}")
             ev = fetch_events(w3, pool, spec, b0, b1, chunk_blocks=int(effective_chunk_blocks), workers=workers)
-        # Protocol-fee history is carried in SetFeeProtocol events; a single
-        # historical RPC state read seeds the state immediately before each window.
-        initial_fee = read_fee_protocol_at_block(w3, pool, max(0, b0 - 1))
-        ev = attach_protocol_fee_state(ev, initial_fee)
-        event_frames[name] = ev
-        path = raw_dir / f"{name}_events.parquet"
-        write_frame(ev, path)
-        if not path.exists() or path.stat().st_size == 0:
+            initial_fee = read_fee_protocol_at_block(w3, pool, max(0, b0 - 1))
+            ev = attach_protocol_fee_state(ev, initial_fee)
+            write_frame(ev, path)
+        event_paths[name] = path
+        if ev is not None:
+            event_frames[name] = ev
+        if artifact_size(path) <= 0:
             raise RuntimeError(f"Failed to materialize event artifact: {path}")
-        emit(f"Wrote {path} ({path.stat().st_size:,} bytes)")
+        emit(f"Materialized {path} ({artifact_size(path):,} bytes)")
 
     symbol = "ETHUSDC"
     max_age = float(cfg["sample"]["primary_alignment"]["max_age_seconds"])
     references = {}
     for name, (start, end) in {"calibration": (cal_start, cal_end), "candidate": (cand_start, cand_end)}.items():
         emit(f"Downloading/scanning Binance {symbol} public archives for {name} reference")
-        targets = event_frames[name].loc[event_frames[name]["event"].eq("Swap"), "timestamp"]
+        if name in event_frames:
+            target_frame = event_frames[name][["event", "timestamp"]]
+        else:
+            target_frame = read_dataset_columns(event_paths[name], ["event", "timestamp"])
+        targets = target_frame.loc[target_frame["event"].eq("Swap"), "timestamp"]
+        del target_frame
         ref = build_reference(symbol, start, end, targets, cache_dir, max_age_seconds=max_age, force=force_downloads)
         references[name] = ref
         ref_path=(cal_dir if name == "calibration" else cand_dir) / "eth_reference.parquet"
@@ -234,9 +329,14 @@ def acquire_v015_inputs(
         emit(f"Wrote {funding_path} ({funding_path.stat().st_size:,} bytes)")
 
     emit("Deriving calibration-only excess-return increments for prospective power")
+    calibration_events = event_frames.get("calibration")
+    if calibration_events is None:
+        emit("Loading materialized calibration event dataset for power-noise replay")
+        calibration_events = read_frame(event_paths["calibration"])
     increments = derive_calibration_excess_increments(
-        event_frames["calibration"], references["calibration"], funding["calibration"], benchmarks["calibration"], cfg
+        calibration_events, references["calibration"], funding["calibration"], benchmarks["calibration"], cfg
     )
+    del calibration_events
     increments_path=cal_dir / "excess_increments.parquet"
     write_frame(increments, increments_path)
     if not increments_path.exists() or increments_path.stat().st_size == 0:
@@ -292,7 +392,7 @@ def acquire_v015_inputs(
             "candidate": {"start": cand_start.isoformat(), "end": cand_end.isoformat(), "from_block": ranges["candidate"][0], "to_block": ranges["candidate"][1]},
         },
         "sources": sources,
-        "outputs": {p.relative_to(root).as_posix(): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in outputs},
+        "outputs": {p.relative_to(root).as_posix(): _artifact_meta(p) for p in outputs},
     }
     manifest_path = root / "v015_acquisition_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

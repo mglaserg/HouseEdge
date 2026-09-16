@@ -10,7 +10,7 @@ from houseedge.env import load_dotenv
 from rich import print
 
 from houseedge.config import load_yaml, PoolSpec
-from houseedge.data.storage import read_frame, write_frame
+from houseedge.data.storage import read_frame, write_frame, artifact_size
 from houseedge.data.reference import collect_coinbase_ticker
 from houseedge.research.gate0 import gate0
 from houseedge.experiment import run_experiment, preflight_primary_inputs
@@ -140,18 +140,27 @@ def fetch_calibration_data_cmd(
             print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. HyperSync handles bulk logs, but HouseEdge still needs a Base RPC for timestamp-to-block resolution and historical state seed reads.")
     elif rpc_url is None and not os.environ.get(cfg.get("chain",{}).get("rpc_env","BASE_RPC_URL")):
         print("[yellow]Warning:[/yellow] no BASE_RPC_URL is set. RPC-mode historical acquisition requires a historical/log-capable provider.")
+    def progress(msg: str):
+        print(f"[cyan]•[/cyan] {msg}")
+        status_path.write_text(json.dumps({
+            "status":"RUNNING",
+            "output_root":str(resolved_root),
+            "cwd":str(Path.cwd()),
+            "last_progress":str(msg),
+            "updated_at":datetime.now(timezone.utc).isoformat(),
+        },indent=2),encoding="utf-8")
     try:
         manifest=acquire_v015_inputs(
             cfg,output_root=resolved_root,rpc_url=rpc_url,chunk_blocks=chunk_blocks,workers=workers,force_downloads=force_downloads,
-            progress=lambda msg: print(f"[cyan]•[/cyan] {msg}"),
+            progress=progress,
         )
         manifest_path=resolved_root/"v015_acquisition_manifest.json"
-        if not manifest_path.exists() or manifest_path.stat().st_size == 0:
+        if not manifest_path.exists() or artifact_size(manifest_path) == 0:
             raise RuntimeError(f"Acquisition returned without a non-empty manifest at {manifest_path}")
         missing=[]
         for rel in manifest.get("outputs",{}):
             artifact=resolved_root/rel
-            if not artifact.exists() or artifact.stat().st_size == 0:
+            if not artifact.exists() or artifact_size(artifact) == 0:
                 missing.append(str(artifact))
         if missing:
             raise RuntimeError("Acquisition returned with missing/empty artifacts: "+", ".join(missing))

@@ -63,6 +63,20 @@ def test_hypersync_acquisition_skips_rpc_log_probe(tmp_path, monkeypatch):
         path.write_bytes(b"test")
         return path
     monkeypatch.setattr(acquire, "write_frame", fake_write)
+    def fake_read_parquet(path, columns=None, **kwargs):
+        year = 2025 if "calibration" in str(path) else 2026
+        df = pd.DataFrame({
+            "event": ["Swap"],
+            "timestamp": [pd.Timestamp(f"{year}-08-01T00:00:00Z")],
+        })
+        return df if columns is None else df[columns]
+    monkeypatch.setattr(acquire.pd, "read_parquet", fake_read_parquet)
+    monkeypatch.setattr(acquire, "read_frame", lambda path: pd.DataFrame({
+        "event": ["Swap"], "timestamp": [pd.Timestamp("2025-08-01T00:00:00Z")],
+        "block_number": [100], "transaction_index": [0], "log_index": [0],
+        "amount0": [1.0], "amount1": [-3000.0], "sqrt_price_x96": [1],
+        "liquidity": [1000], "tick": [0], "fee_protocol_packed": [0], "lp_fee_fraction": [1.0],
+    }))
 
     manifest = acquire.acquire_v015_inputs(cfg, output_root=tmp_path)
     assert calls == {"events": 2, "preflight": 1, "aave": 2}

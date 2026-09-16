@@ -152,4 +152,7 @@ historical_data:
     url: https://base.hypersync.xyz
     api_token_env: ENVIO_API_TOKEN
     require_chain_id: 8453
+    # Bounded-memory acquisition. ~100k Base blocks is roughly a few days.
+    # Each chunk is written immediately as a resumable parquet partition.
+    chunk_blocks: 100000
   rpc_fallback_allowed: false

@@ -1,8 +1,8 @@
-# HouseEdge LP v0.2.0
+# HouseEdge LP v0.2.3
 
 HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-v0.2.0 moves HouseEdge's multi-month Base event acquisition from JSON-RPC `eth_getLogs` to Envio HyperSync. Alchemy/Base RPC remains in the workflow only for lightweight block-boundary resolution and a handful of historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
+v0.2.3 keeps HyperSync as the bulk Base history source but makes Experiment 001 acquisition bounded-memory and resumable. Multi-month Uniswap event windows are fetched in block chunks and checkpointed immediately to partitioned Parquet datasets, so a Lubuntu OOM kill or network interruption cannot erase the completed work. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
 
 ## Core rule
 
@@ -12,8 +12,13 @@ Counterparty -> Compensation -> Costs -> Falsifier -> EdgeLab -> Build
 
 A KILL is a successful research outcome. A measurement failure is VOID, not KILL. Range optimization cannot rescue a primary KILL.
 
-## What changed in v0.2.0
+## What changed in v0.2.3
 
+- Fetch Uniswap history in bounded HyperSync block chunks (`100000` blocks by default) instead of buffering an entire multi-month window in one Python list.
+- Write each completed chunk immediately under `data/raw/{calibration,candidate}_events.parquet/part-*.parquet`, with per-chunk `.done.json` checkpoints and a final `_SUCCESS.json`.
+- Resume completed chunks automatically after interruption; `--force-downloads` clears and rebuilds the dataset.
+- Avoid loading calibration and candidate event histories into RAM together during acquisition; reference construction projects only `event` + `timestamp`.
+- Update `v015_acquisition_status.json` on every progress checkpoint so a killed process leaves its last completed step behind.
 - Make **Envio HyperSync** the default bulk historical source for Base Uniswap v3 `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` logs.
 - Use HyperSync for Aave v3 Base `ReserveDataUpdated` history as well, so the benchmark side cannot fall back into restricted multi-month `eth_getLogs` scans.
 - Keep `BASE_RPC_URL` for timestamp-to-block boundary resolution and one historical state seed read per window (Uniswap `slot0.feeProtocol` and Aave reserve state). A keyed Alchemy Free endpoint is sufficient for this lightweight/archive-state role.
@@ -66,9 +71,21 @@ export BASE_RPC_URL="https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY"
 uv run houseedge hypersync-preflight
 uv run houseedge discover-pool
 uv run houseedge fetch-calibration-data
-
-The command prints the absolute output directory before acquisition begins and writes `data/v015_acquisition_status.json` immediately. It reports `STARTED`, `FAILED`, or `COMPLETE`; a successful return is only possible after all expected artifacts are verified non-empty.
 ```
+
+The command prints the absolute output directory before acquisition begins and writes `data/v015_acquisition_status.json` immediately. During the long HyperSync pull it updates that file with `RUNNING` and the latest checkpoint. It reports `FAILED` or `COMPLETE` at termination; a successful return is only possible after all expected artifacts are verified non-empty.
+
+The two raw event artifacts are partitioned Parquet **directories** (their paths still end in `.parquet` for CLI compatibility):
+
+```text
+data/raw/calibration_events.parquet/
+  part-000...parquet
+  part-000...done.json
+  ...
+  _SUCCESS.json
+```
+
+If the process is interrupted, rerun the same command. Completed chunks are reused automatically.
 
 `fetch-calibration-data` does **not** use your Alchemy endpoint for the multi-month Uniswap/Aave log scan when `historical_data.event_source: HYPERSYNC` (the Experiment 001 default).
 
@@ -199,4 +216,4 @@ Experiment 001 defaults to HyperSync for bulk logs:
 uv run houseedge hypersync-preflight
 ```
 
-`rpc-preflight` is retained for diagnostics or an explicitly configured RPC bulk fallback, but it is no longer part of the normal v0.2.0 acquisition path. A 10-block Alchemy Free `eth_getLogs` limit therefore does not block Experiment 001.
+`rpc-preflight` is retained for diagnostics or an explicitly configured RPC bulk fallback, but it is no longer part of the normal v0.2.3 acquisition path. A 10-block Alchemy Free `eth_getLogs` limit therefore does not block Experiment 001.

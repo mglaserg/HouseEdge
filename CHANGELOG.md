@@ -1,3 +1,11 @@
+## v0.2.3
+
+- Fixes the Lubuntu acquisition process being killable before its first write by removing the whole-window HyperSync event buffer from Experiment 001 acquisition.
+- Uniswap event history is now fetched in bounded block chunks and written immediately as resumable partitioned Parquet datasets.
+- Interrupted or OOM-killed acquisitions keep completed `part-*.parquet` files and resume them on the next run.
+- Adds stable hashing/size accounting for partitioned dataset artifacts and explicit `_SUCCESS.json` markers.
+- No Experiment 001 hypothesis, hedge, economic hurdle, or outcome logic changed.
+
 # Changelog
 
 ## v0.2.2
