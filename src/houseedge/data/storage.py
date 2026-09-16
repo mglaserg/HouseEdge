@@ -3,7 +3,46 @@ from pathlib import Path
 import hashlib
 import json
 import os
+import numbers
 import pandas as pd
+
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+
+
+def parquet_safe_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a Parquet-safe copy without losing arbitrary-precision EVM ints.
+
+    Ethereum ABI values such as uint160/uint128/uint256 routinely exceed signed
+    int64. pandas stores those as Python integers, but Arrow may attempt to pass
+    them through a native C ``long`` while inferring a column type, raising
+    ``OverflowError: Python int too large to convert to C long``.
+
+    Any column containing an integer outside signed-int64 is serialized as a
+    nullable decimal string. Downstream HouseEdge code already converts these
+    fields explicitly with ``int(...)`` / ``float(...)`` when numeric use is
+    required, so this keeps storage lossless and portable.
+    """
+    out = df.copy()
+    for col in out.columns:
+        s = out[col]
+        wide = False
+        if pd.api.types.is_unsigned_integer_dtype(s.dtype):
+            # uint64 can exceed Arrow/native signed integer paths on some builds.
+            try:
+                wide = bool(len(s) and int(s.max()) > _INT64_MAX)
+            except Exception:
+                wide = True
+        elif s.dtype == object:
+            for value in s.dropna():
+                if isinstance(value, numbers.Integral) and not isinstance(value, bool):
+                    n = int(value)
+                    if n < _INT64_MIN or n > _INT64_MAX:
+                        wide = True
+                        break
+        if wide:
+            out[col] = s.map(lambda v: None if pd.isna(v) else str(int(v)))
+    return out
 
 
 def write_frame(df: pd.DataFrame, path: str | Path) -> Path:
@@ -14,7 +53,7 @@ def write_frame(df: pd.DataFrame, path: str | Path) -> Path:
         if path.suffix.lower() == ".csv":
             df.to_csv(tmp, index=False)
         else:
-            df.to_parquet(tmp, index=False)
+            parquet_safe_frame(df).to_parquet(tmp, index=False)
         if not tmp.exists() or tmp.stat().st_size == 0:
             raise RuntimeError(f"Writer produced no bytes for {path}")
         os.replace(tmp, path)

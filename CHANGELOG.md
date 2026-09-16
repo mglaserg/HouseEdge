@@ -1,3 +1,11 @@
+## v0.2.4
+
+- Fix Experiment 001 acquisition failing with `Python int too large to convert to C long` when Parquet/Arrow encounters Uniswap/Aave EVM integers wider than signed int64.
+- Serialize arbitrary-precision EVM integer columns losslessly as decimal strings at the Parquet boundary; downstream HouseEdge math converts them explicitly when needed.
+- Covers uint160 `sqrtPriceX96`, uint128 liquidity, int/uint256 raw amounts, Aave ray values, and future oversized integer fields generically rather than hard-coding one column.
+- Adds regression tests for dense and sparse wide-integer columns.
+- No Experiment 001 economics, preregistration, outcome window, or decision rule changed.
+
 ## v0.2.3
 
 - Fixes the Lubuntu acquisition process being killable before its first write by removing the whole-window HyperSync event buffer from Experiment 001 acquisition.

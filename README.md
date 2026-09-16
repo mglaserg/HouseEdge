@@ -1,8 +1,11 @@
-# HouseEdge LP v0.2.3
+# HouseEdge LP v0.2.4
+
+> **v0.2.4 acquisition portability:** Parquet writes now preserve Ethereum integers wider than signed int64 (for example Uniswap `sqrtPriceX96` and liquidity) as lossless decimal strings, avoiding native C-long overflow on Lubuntu/Arrow builds.
+
 
 HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-v0.2.3 keeps HyperSync as the bulk Base history source but makes Experiment 001 acquisition bounded-memory and resumable. Multi-month Uniswap event windows are fetched in block chunks and checkpointed immediately to partitioned Parquet datasets, so a Lubuntu OOM kill or network interruption cannot erase the completed work. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
+v0.2.4 keeps HyperSync as the bulk Base history source but makes Experiment 001 acquisition bounded-memory and resumable. Multi-month Uniswap event windows are fetched in block chunks and checkpointed immediately to partitioned Parquet datasets, so a Lubuntu OOM kill or network interruption cannot erase the completed work. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
 
 ## Core rule
 
