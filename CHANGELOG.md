@@ -1,3 +1,10 @@
+# v0.2.5
+
+- Chunk Aave v3 Base `ReserveDataUpdated` HyperSync history using the same bounded 100k-block windows as Uniswap acquisition.
+- Add outer retry with exponential backoff for truncated/interrupted HyperSync Arrow responses so only the failed Aave chunk is retried instead of the full multi-month window.
+- Emit Aave block-range progress during calibration acquisition.
+- No Experiment 001 economics, preregistration, or outcome logic changed.
+
 ## v0.2.4
 
 - Fix Experiment 001 acquisition failing with `Python int too large to convert to C long` when Parquet/Arrow encounters Uniswap/Aave EVM integers wider than signed int64.

@@ -7,6 +7,11 @@ HouseEdge is the crypto/DEX “be the casino” research project: earn compensat
 
 v0.2.4 keeps HyperSync as the bulk Base history source but makes Experiment 001 acquisition bounded-memory and resumable. Multi-month Uniswap event windows are fetched in block chunks and checkpointed immediately to partitioned Parquet datasets, so a Lubuntu OOM kill or network interruption cannot erase the completed work. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
 
+### HyperSync transport resilience
+
+Aave Base USDC benchmark history is fetched in the same bounded HyperSync block chunks as the Uniswap history. If an Arrow response is truncated or the transport drops, HouseEdge retries only the affected Aave chunk with exponential backoff rather than restarting the entire multi-month benchmark query.
+
+
 ## Core rule
 
 ```text

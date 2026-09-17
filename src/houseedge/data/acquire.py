@@ -302,7 +302,9 @@ def acquire_v015_inputs(
             from houseedge.data.aave_base import fetch_usdc_supply_rates_hypersync
             emit(f"Reconstructing Aave v3 Base USDC {name} supply APY via HyperSync + one RPC seed read")
             rates = fetch_usdc_supply_rates_hypersync(
-                w3, b0, b1, settings=hypersync_settings, asset=cfg["pool"]["token1_address"]
+                w3, b0, b1, settings=hypersync_settings, asset=cfg["pool"]["token1_address"],
+                chunk_blocks=int(historical_cfg.get("hypersync", {}).get("chunk_blocks", 100_000)),
+                emit=emit,
             )
         else:
             emit(f"Reconstructing Aave v3 Base USDC {name} supply APY via RPC")
