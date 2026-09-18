@@ -10,8 +10,12 @@ def align_reference(swaps: pd.DataFrame, reference: pd.DataFrame, tolerance_seco
     if "alignment_eligible" in r:
         r=r[r["alignment_eligible"].fillna(True).astype(bool)].copy()
     r=r.sort_values("timestamp")
-    s["timestamp"]=pd.to_datetime(s["timestamp"], utc=True)
-    r["timestamp"]=pd.to_datetime(r["timestamp"], utc=True)+pd.to_timedelta(shift_seconds, unit="s")
+    # pandas merge_asof requires identical datetime units as well as timezone.
+    # Parquet inputs may preserve different resolutions (e.g. ms vs us), so
+    # canonicalize both sides to UTC nanoseconds at the alignment boundary.
+    s["timestamp"]=pd.to_datetime(s["timestamp"], utc=True).astype("datetime64[ns, UTC]")
+    r["timestamp"]=pd.to_datetime(r["timestamp"], utc=True).astype("datetime64[ns, UTC]")
+    r["timestamp"]=r["timestamp"]+pd.to_timedelta(shift_seconds, unit="s")
     r=r.rename(columns={"timestamp":"quote_timestamp","mid":"ref_mid"})
     keep=[c for c in ["quote_timestamp","ref_mid","bid","ask","source"] if c in r]
     out=pd.merge_asof(s, r[keep].sort_values("quote_timestamp"), left_on="timestamp", right_on="quote_timestamp", direction="backward", tolerance=pd.to_timedelta(tolerance_seconds,unit="s"))

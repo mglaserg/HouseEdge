@@ -31,3 +31,17 @@ def test_partitioned_calibration_replay_produces_daily_increments(tmp_path, monk
     assert out["timestamp"].is_monotonic_increasing
     assert out["timestamp"].dt.hour.eq(0).all()
     assert out["excess_return_inc"].notna().all()
+
+
+def test_streaming_benchmark_normalizes_mixed_datetime_resolutions():
+    timestamps=pd.Series(
+        [pd.Timestamp("2026-01-01T00:00:01Z"),pd.Timestamp("2026-01-01T00:00:02Z")],
+        dtype="datetime64[ms, UTC]",
+    )
+    rates=pd.DataFrame({
+        "timestamp":pd.Series([pd.Timestamp("2026-01-01T00:00:00Z")],dtype="datetime64[us, UTC]"),
+        "apy":[0.04],
+    })
+    out=acquire._benchmark_incremental_returns_streaming(timestamps,rates,None)
+    assert len(out)==2
+    assert pd.notna(out).all()

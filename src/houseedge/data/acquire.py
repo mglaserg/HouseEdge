@@ -125,11 +125,11 @@ def _benchmark_incremental_returns(timestamps: pd.Series, rates: pd.DataFrame) -
     the noise/dependence process for prospective power, and the mean is removed
     by the power simulator.
     """
-    t = pd.to_datetime(timestamps, utc=True).reset_index(drop=True)
+    t = pd.to_datetime(timestamps, utc=True).astype("datetime64[ns, UTC]").reset_index(drop=True)
     if len(t) == 0:
         return np.array([], dtype=float)
     r = rates[["timestamp","apy"]].copy()
-    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True)
+    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True).astype("datetime64[ns, UTC]")
     r = r.sort_values("timestamp")
     starts = pd.DataFrame({"timestamp": t.shift(1).fillna(t.iloc[0])})
     active = pd.merge_asof(starts.sort_values("timestamp"), r, on="timestamp", direction="backward")
@@ -199,15 +199,15 @@ def _benchmark_incremental_returns_streaming(
     previous_timestamp: pd.Timestamp | None,
 ) -> np.ndarray:
     """Event-to-event cash returns that remain continuous across dataset parts."""
-    t = pd.Series(pd.to_datetime(timestamps, utc=True)).reset_index(drop=True)
+    t = pd.Series(pd.to_datetime(timestamps, utc=True)).astype("datetime64[ns, UTC]").reset_index(drop=True)
     if len(t) == 0:
         return np.array([], dtype=float)
     r = rates[["timestamp", "apy"]].copy()
-    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True)
+    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True).astype("datetime64[ns, UTC]")
     r = r.sort_values("timestamp")
     starts = t.shift(1)
     starts.iloc[0] = previous_timestamp if previous_timestamp is not None else t.iloc[0]
-    q = pd.DataFrame({"timestamp": pd.to_datetime(starts, utc=True)})
+    q = pd.DataFrame({"timestamp": pd.to_datetime(starts, utc=True).astype("datetime64[ns, UTC]")})
     active = pd.merge_asof(q.sort_values("timestamp"), r, on="timestamp", direction="backward")
     if active["apy"].isna().any():
         raise ValueError("Aave calibration benchmark is missing a rate at/before replay interval")
