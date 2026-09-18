@@ -63,7 +63,8 @@ calibration:
 sample:
   start: null
   end: null
-  primary_reference: BINANCE_SPOT_ETHUSDC
+  primary_reference: BINANCE_SPOT_ETHUSDT
+  primary_reference_symbol: ETHUSDT
   markout_horizons_seconds:
   - 30
   - 60

@@ -113,6 +113,80 @@ def _fetch_hypersync_event_dataset(
     emit(f"Completed event dataset {dataset_dir} ({len(starts)} parts)")
     return dataset_dir
 
+
+
+def _reference_symbol(cfg: dict) -> str:
+    """Return the configured Binance spot symbol used as the external ETH reference."""
+    return str(cfg.get("sample", {}).get("primary_reference_symbol", "ETHUSDT")).upper()
+
+
+def refresh_binance_references(
+    cfg: dict,
+    *,
+    output_root: str | Path = "data",
+    force_downloads: bool = False,
+    windows: tuple[str, ...] = ("calibration", "candidate"),
+    progress: Callable[[str], None] | None = None,
+) -> dict:
+    """Rebuild calibration/candidate Binance references from existing event datasets only.
+
+    This intentionally does not touch Base/HyperSync event history, Aave benchmark
+    history, or Hyperliquid funding. It is the recovery path when the chosen
+    reference symbol fails the preregistered freshness/coverage rule.
+    """
+    emit = progress or (lambda _msg: None)
+    root = Path(output_root).expanduser().resolve()
+    cal_dir = root / "calibration"
+    cand_dir = root / "candidate"
+    raw_dir = root / "raw"
+    cache_dir = root / "cache" / "binance"
+    for d in (cal_dir, cand_dir, cache_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
+    symbol = _reference_symbol(cfg)
+    max_age = float(cfg["sample"]["primary_alignment"]["max_age_seconds"])
+    cal_start, cal_end = _window(cfg, "calibration_window")
+    cand_start, cand_end = _window(cfg, "candidate_primary_window")
+
+    window_map = {
+        "calibration": (cal_start, cal_end, cal_dir),
+        "candidate": (cand_start, cand_end, cand_dir),
+    }
+    invalid = sorted(set(windows) - set(window_map))
+    if invalid:
+        raise ValueError(f"Unsupported reference windows: {invalid}")
+
+    outputs = {}
+    for name in windows:
+        start, end, out_dir = window_map[name]
+        events_path = raw_dir / f"{name}_events.parquet"
+        if not events_path.exists():
+            raise FileNotFoundError(f"Missing existing event dataset: {events_path}")
+        emit(f"Reading {name} swap timestamps from {events_path}")
+        target_frame = read_dataset_columns(events_path, ["event", "timestamp"])
+        targets = target_frame.loc[target_frame["event"].eq("Swap"), "timestamp"]
+        del target_frame
+        emit(f"Building {symbol} {name} reference for {len(targets):,} swaps")
+        ref = build_reference(
+            symbol, start, end, targets, cache_dir,
+            max_age_seconds=max_age, force=force_downloads,
+        )
+        out_path = out_dir / "eth_reference.parquet"
+        write_frame(ref, out_path)
+        outputs[name] = str(out_path)
+        exact = (
+            ref[ref["alignment_eligible"].fillna(False).astype(bool)]
+            if "alignment_eligible" in ref else ref
+        )
+        emit(f"Wrote {out_path} ({len(exact):,} alignment-eligible rows)")
+
+    return {
+        "symbol": symbol,
+        "max_age_seconds": max_age,
+        "outputs": outputs,
+        "base_event_history_reused": True,
+    }
+
 def _window(cfg: dict, key: str) -> tuple[pd.Timestamp, pd.Timestamp]:
     w = cfg["calibration"][key]
     return window_timestamps(w["start"], w["end"])
@@ -409,7 +483,7 @@ def acquire_v015_inputs(
             raise RuntimeError(f"Failed to materialize event artifact: {path}")
         emit(f"Materialized {path} ({artifact_size(path):,} bytes)")
 
-    symbol = "ETHUSDC"
+    symbol = _reference_symbol(cfg)
     max_age = float(cfg["sample"]["primary_alignment"]["max_age_seconds"])
     references = {}
     for name, (start, end) in {"calibration": (cal_start, cal_end), "candidate": (cand_start, cand_end)}.items():
@@ -499,7 +573,7 @@ def acquire_v015_inputs(
             if historical_source == "HYPERSYNC"
             else "Base JSON-RPC / Uniswap v3 pool logs"
         ),
-        "reference": "Binance public ETHUSDC aggregate-trade + 5m-kline archives",
+        "reference": f"Binance public {symbol} aggregate-trade + 5m-kline archives",
         "benchmark": (
             "Aave v3 Base initial reserve state via RPC + ReserveDataUpdated via Envio HyperSync"
             if historical_source == "HYPERSYNC"
@@ -566,7 +640,7 @@ def finalize_existing_v015_acquisition(cfg: dict, output_root: str | Path = "dat
     sources={
         "bulk_historical_source":historical_source,
         "pool_events":"Envio HyperSync Base / Uniswap v3 pool logs" if historical_source=="HYPERSYNC" else "Base JSON-RPC / Uniswap v3 pool logs",
-        "reference":"Binance public ETHUSDC aggregate-trade + 5m-kline archives",
+        "reference":f"Binance public {_reference_symbol(cfg)} aggregate-trade + 5m-kline archives",
         "benchmark":"Aave v3 Base initial reserve state via RPC + ReserveDataUpdated via Envio HyperSync" if historical_source=="HYPERSYNC" else "Aave v3 Base on-chain ReserveDataUpdated + historical data-provider state via RPC",
         "funding":"Hyperliquid public fundingHistory info endpoint",
         "rpc_role":"state_validation_and_block_boundaries_only" if historical_source=="HYPERSYNC" else "historical_logs_and_state",
