@@ -118,6 +118,70 @@ def derive_calibration_increments_cmd(
     },indent=2),encoding="utf-8")
     print({"rows":len(increments),"output":str(out.resolve()),"frequency":"UTC daily","manifest":str(root/"v015_acquisition_manifest.json")})
 
+@app.command("diagnose-reference-coverage")
+def diagnose_reference_coverage_cmd(
+    events: str="data/raw/calibration_events.parquet",
+    reference: str="data/calibration/eth_reference.parquet",
+    config: str=DEFAULT_CONFIG,
+    worst: int=10,
+):
+    """Report calibration reference match coverage without downloading anything."""
+    import pandas as pd
+    from houseedge.data.reference import normalize_reference
+    from houseedge.research.alignment import align_reference
+
+    cfg=load_yaml(config)
+    tolerance=float(cfg["sample"]["primary_alignment"]["max_age_seconds"])
+    allowed=float(cfg["validity"]["max_missing_reference_fraction"])
+
+    ref=normalize_reference(read_frame(reference))
+    if "alignment_eligible" in ref:
+        ref=ref[ref["alignment_eligible"].fillna(False).astype(bool)].copy()
+    ref["timestamp"]=pd.to_datetime(ref["timestamp"],utc=True).astype("datetime64[ns, UTC]")
+
+    p=Path(events)
+    parts=sorted(p.glob("part-*.parquet")) if p.is_dir() else [p]
+    if not parts:
+        raise typer.BadParameter(f"No parquet event parts found under {p}")
+
+    total=0; matched_total=0; stats=[]
+    for part in parts:
+        ev=pd.read_parquet(part,columns=["event","timestamp"])
+        swaps=ev[ev["event"].eq("Swap")].copy()
+        if swaps.empty:
+            continue
+        swaps["timestamp"]=pd.to_datetime(swaps["timestamp"],utc=True).astype("datetime64[ns, UTC]")
+        lo=swaps["timestamp"].min()-pd.Timedelta(seconds=tolerance)
+        hi=swaps["timestamp"].max()
+        rp=ref[(ref["timestamp"]>=lo)&(ref["timestamp"]<=hi)].copy()
+        aligned=align_reference(swaps,rp,tolerance,0)
+        n=len(aligned); m=int(aligned["ref_mid"].notna().sum())
+        total += n; matched_total += m
+        stats.append({
+            "part":part.name,
+            "swaps":n,
+            "matched":m,
+            "missing":n-m,
+            "missing_pct":100.0*(n-m)/n if n else 0.0,
+        })
+
+    missing=total-matched_total
+    missing_fraction=(missing/total) if total else float("nan")
+    result={
+        "reference_rows":int(len(ref)),
+        "first_reference":None if ref.empty else str(ref["timestamp"].min()),
+        "last_reference":None if ref.empty else str(ref["timestamp"].max()),
+        "swaps":int(total),
+        "matched":int(matched_total),
+        "missing":int(missing),
+        "missing_pct":100.0*missing_fraction if total else None,
+        "allowed_missing_pct":100.0*allowed,
+        "passes":bool(total and missing_fraction<=allowed),
+        "worst_partitions":sorted(stats,key=lambda x:x["missing_pct"],reverse=True)[:max(int(worst),0)],
+    }
+    print(json.dumps(result,indent=2,default=str))
+
+
 @app.command("hypersync-preflight")
 def hypersync_preflight_cmd(config: str=DEFAULT_CONFIG):
     """Verify Envio HyperSync credentials and Base chain connectivity."""
