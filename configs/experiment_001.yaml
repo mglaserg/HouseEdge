@@ -1,6 +1,6 @@
 experiment_id: HOUSEEDGE-LP-001
 status: CALIBRATION_REQUIRED
-spec_version: 0.2.0
+spec_version: 0.2.1
 registered_at: null
 thesis:
   counterparty: Liquidity-demanding traders whose orders reach the Uniswap v3 pool.
@@ -44,8 +44,8 @@ calibration:
     outer_reps: 500
     inner_bootstrap_reps: 500
     stationary_bootstrap_block_method: calibration_autocorrelation
-    stationary_bootstrap_min_mean_block_swaps: 5
-    stationary_bootstrap_max_mean_block_swaps: 1000
+    stationary_bootstrap_min_mean_block_days: 2
+    stationary_bootstrap_max_mean_block_days: 60
   regimes:
     sampling_minutes: 5
     lower_quantile: 0.2
@@ -105,7 +105,7 @@ benchmark:
   annual_excess_return_hurdle: 0.05
 inference:
   stationary_bootstrap_reps: 2000
-  stationary_bootstrap_mean_block_swaps: null
+  stationary_bootstrap_mean_block_days: null
   confidence_level: 0.95
   primary_trial_count: 1
   statistical_go_rule: lower_95pct_ci_annualized_excess_return_gt_0

@@ -51,19 +51,19 @@ def apply_calibration_selection(
     if report.get("calibration_basis_sha256") != calibration_basis_hash(cfg):
         raise RuntimeError("Current design assumptions differ from the calibration report.")
     candidate=report.get("candidate_window",{})
-    block=report.get("bootstrap",{}).get("selected_mean_block_swaps")
+    block=report.get("bootstrap",{}).get("selected_mean_block_days")
     if not candidate.get("start") or not candidate.get("end") or block is None:
         raise RuntimeError("Calibration report is missing candidate dates or selected bootstrap block length.")
     cfg["sample"]["start"]=candidate["start"]
     cfg["sample"]["end"]=candidate["end"]
-    cfg["inference"]["stationary_bootstrap_mean_block_swaps"]=float(block)
+    cfg["inference"]["stationary_bootstrap_mean_block_days"]=float(block)
     cfg["status"]="READY_TO_FREEZE"
     Path(config_path).write_text(yaml.safe_dump(cfg,sort_keys=False),encoding="utf-8")
     return {
         "status":cfg["status"],
         "sample_start":cfg["sample"]["start"],
         "sample_end":cfg["sample"]["end"],
-        "stationary_bootstrap_mean_block_swaps":float(block),
+        "stationary_bootstrap_mean_block_days":float(block),
         "calibration_basis_sha256":calibration_basis_hash(cfg),
     }
 
@@ -86,13 +86,13 @@ def freeze_record(
         raise RuntimeError("Calibration report did not PASS; primary experiment cannot be frozen.")
     if report.get("calibration_basis_sha256") != calibration_basis_hash(cfg):
         raise RuntimeError("Current design assumptions differ from the passing calibration report. Re-run v0.15 calibration before freeze.")
-    selected_block = report.get("bootstrap",{}).get("selected_mean_block_swaps")
-    configured_block = cfg.get("inference",{}).get("stationary_bootstrap_mean_block_swaps")
+    selected_block = report.get("bootstrap",{}).get("selected_mean_block_days")
+    configured_block = cfg.get("inference",{}).get("stationary_bootstrap_mean_block_days")
     if selected_block is None:
         raise RuntimeError("Calibration report is missing the selected stationary-bootstrap block length.")
     if configured_block is None or abs(float(configured_block)-float(selected_block)) > 1e-12:
         raise RuntimeError(
-            "Set inference.stationary_bootstrap_mean_block_swaps to the exact outcome-blind value selected by the passing calibration report before freeze."
+            "Set inference.stationary_bootstrap_mean_block_days to the exact outcome-blind value selected by the passing calibration report before freeze."
         )
     sample=cfg.get("sample",{})
     if not sample.get("start") or not sample.get("end"):

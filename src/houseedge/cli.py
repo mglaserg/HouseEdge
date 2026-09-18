@@ -16,7 +16,7 @@ from houseedge.research.gate0 import gate0
 from houseedge.experiment import run_experiment, preflight_primary_inputs
 from houseedge.demo import synthetic_tape
 from houseedge.prereg import freeze_record, assert_frozen, seal_prediction, register_outcome_look, apply_calibration_selection
-from houseedge.calibration import run_design_calibration
+from houseedge.calibration import run_design_calibration, run_design_calibration_from_paths
 
 # Load a project/local .env automatically. Existing shell variables win.
 load_dotenv(override=False)
@@ -62,17 +62,61 @@ def calibrate_design_cmd(
 ):
     """Run outcome-blind v0.15 power/regime/napkin/capacity/JIT gates."""
     cfg=load_yaml(config)
-    result=run_design_calibration(
-        calibration_excess_increments=read_frame(calibration_increments),
-        calibration_reference=read_frame(calibration_reference),
-        candidate_reference=read_frame(candidate_reference),
-        candidate_events=read_frame(candidate_events),
-        benchmark_rates=read_frame(benchmark_rates),
-        cfg=cfg,output_dir=output,
-    )
+    candidate_path=Path(candidate_events)
+    if candidate_path.is_dir():
+        result=run_design_calibration_from_paths(
+            calibration_excess_increments_path=calibration_increments,
+            calibration_reference_path=calibration_reference,
+            candidate_reference_path=candidate_reference,
+            candidate_events_path=candidate_events,
+            benchmark_rates_path=benchmark_rates,
+            cfg=cfg,output_dir=output,
+        )
+    else:
+        result=run_design_calibration(
+            calibration_excess_increments=read_frame(calibration_increments),
+            calibration_reference=read_frame(calibration_reference),
+            candidate_reference=read_frame(candidate_reference),
+            candidate_events=read_frame(candidate_events),
+            benchmark_rates=read_frame(benchmark_rates),
+            cfg=cfg,output_dir=output,
+        )
     print(json.dumps(result,indent=2,default=str))
 
 
+
+@app.command("derive-calibration-increments")
+def derive_calibration_increments_cmd(
+    events: str="data/raw/calibration_events.parquet",
+    reference: str="data/calibration/eth_reference.parquet",
+    funding: str="data/calibration/hyperliquid_eth_funding.parquet",
+    benchmark_rates: str="data/calibration/aave_base_usdc_apy.parquet",
+    output: str="data/calibration/excess_increments.parquet",
+    config: str=DEFAULT_CONFIG,
+    force: bool=False,
+):
+    """Resume from downloaded calibration data and derive daily power-noise increments with bounded memory."""
+    from houseedge.data.acquire import derive_calibration_excess_increments_from_dataset
+    cfg=load_yaml(config); out=Path(output)
+    if out.exists() and out.stat().st_size>0 and not force:
+        print(f"[green]Using existing calibration increments:[/green] {out.resolve()}")
+        return
+    print(f"[bold]Calibration event dataset:[/bold] {Path(events).resolve()}")
+    print(f"[bold]Writing increments to:[/bold] {out.resolve()}")
+    def progress(msg: str): print(f"[cyan]•[/cyan] {msg}")
+    increments=derive_calibration_excess_increments_from_dataset(
+        events,read_frame(reference),read_frame(funding),read_frame(benchmark_rates),cfg,progress=progress
+    )
+    write_frame(increments,out)
+    from houseedge.data.acquire import finalize_existing_v015_acquisition
+    root=Path(events).resolve().parents[1] if Path(events).resolve().parent.name == "raw" else Path("data").resolve()
+    manifest=finalize_existing_v015_acquisition(cfg,root)
+    status_path=root/"v015_acquisition_status.json"
+    status_path.write_text(json.dumps({
+        "status":"COMPLETE","output_root":str(root),"manifest":str(root/"v015_acquisition_manifest.json"),
+        "completed_at":datetime.now(timezone.utc).isoformat(),"recovered_from_existing_artifacts":True,
+    },indent=2),encoding="utf-8")
+    print({"rows":len(increments),"output":str(out.resolve()),"frequency":"UTC daily","manifest":str(root/"v015_acquisition_manifest.json")})
 
 @app.command("hypersync-preflight")
 def hypersync_preflight_cmd(config: str=DEFAULT_CONFIG):

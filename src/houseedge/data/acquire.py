@@ -21,7 +21,10 @@ from houseedge.data.storage import (
 )
 from houseedge.research.alignment import align_reference
 from houseedge.research.protocol_fee import attach_protocol_fee_state
-from houseedge.research.replay import replay_discrete_hedged_lp
+from houseedge.research.replay import (
+    replay_discrete_hedged_lp, replay_discrete_hedged_lp_chunk,
+    finalize_streaming_replay, StreamingReplayState,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -185,8 +188,137 @@ def derive_calibration_excess_increments(
         "timestamp": pd.to_datetime(path["timestamp"], utc=True),
         "excess_return_inc": pd.to_numeric(path["net_pnl_inc_usd"]).to_numpy(dtype=float) / float(summary.initial_capital_usd) - cash,
     })
-    return out
+    out["timestamp"] = out["timestamp"].dt.floor("D")
+    return out.groupby("timestamp",as_index=False)["excess_return_inc"].sum()
 
+
+
+def _benchmark_incremental_returns_streaming(
+    timestamps: pd.Series,
+    rates: pd.DataFrame,
+    previous_timestamp: pd.Timestamp | None,
+) -> np.ndarray:
+    """Event-to-event cash returns that remain continuous across dataset parts."""
+    t = pd.Series(pd.to_datetime(timestamps, utc=True)).reset_index(drop=True)
+    if len(t) == 0:
+        return np.array([], dtype=float)
+    r = rates[["timestamp", "apy"]].copy()
+    r["timestamp"] = pd.to_datetime(r["timestamp"], utc=True)
+    r = r.sort_values("timestamp")
+    starts = t.shift(1)
+    starts.iloc[0] = previous_timestamp if previous_timestamp is not None else t.iloc[0]
+    q = pd.DataFrame({"timestamp": pd.to_datetime(starts, utc=True)})
+    active = pd.merge_asof(q.sort_values("timestamp"), r, on="timestamp", direction="backward")
+    if active["apy"].isna().any():
+        raise ValueError("Aave calibration benchmark is missing a rate at/before replay interval")
+    dt_years = (t - pd.to_datetime(starts, utc=True)).dt.total_seconds().to_numpy() / (365.0 * 24 * 3600)
+    apy = pd.to_numeric(active["apy"]).to_numpy(dtype=float)
+    return np.expm1(np.log1p(apy) * dt_years)
+
+
+def derive_calibration_excess_increments_from_dataset(
+    calibration_event_dataset: str | Path,
+    calibration_reference: pd.DataFrame,
+    calibration_funding: pd.DataFrame,
+    calibration_benchmark_rates: pd.DataFrame,
+    cfg: dict,
+    *,
+    progress: Callable[[str], None] | None = None,
+) -> pd.DataFrame:
+    """Bounded-memory calibration replay from partitioned event history.
+
+    The LP/hedge state is carried across parquet parts exactly once.  Output is
+    aggregated to UTC daily excess-return increments, which is the dependence
+    process used by prospective power and later primary bootstrap inference.
+    Candidate-primary events are never accepted by this function.
+    """
+    emit = progress or (lambda _msg: None)
+    path = Path(calibration_event_dataset)
+    if path.is_dir():
+        parts = sorted(path.glob("part-*.parquet"))
+    else:
+        parts = [path]
+    if not parts:
+        raise FileNotFoundError(f"No calibration parquet parts found under {path}")
+
+    ref = normalize_reference(calibration_reference)
+    align_cfg = cfg["sample"]["primary_alignment"]
+    tolerance = float(align_cfg["max_age_seconds"])
+    spec = PoolSpec.from_config(cfg)
+    p = cfg["position"]; h = cfg["hedge"]
+    state = StreamingReplayState()
+    daily: dict[pd.Timestamp, float] = {}
+    total_swaps = 0
+    matched_swaps = 0
+    previous_event_ts: pd.Timestamp | None = None
+
+    for i, part in enumerate(parts, 1):
+        ev = pd.read_parquet(part)
+        if "timestamp" in ev:
+            ev["timestamp"] = pd.to_datetime(ev["timestamp"], utc=True)
+        swaps = ev[ev["event"].eq("Swap")].copy()
+        del ev
+        if swaps.empty:
+            emit(f"Calibration replay {i}/{len(parts)}: {part.name} (no swaps)")
+            continue
+        total_swaps += len(swaps)
+        lo = pd.Timestamp(swaps["timestamp"].min()) - pd.Timedelta(seconds=tolerance)
+        hi = pd.Timestamp(swaps["timestamp"].max())
+        ref_part = ref[(ref["timestamp"] >= lo) & (ref["timestamp"] <= hi)].copy()
+        aligned = align_reference(swaps, ref_part, tolerance, 0)
+        matched = aligned["ref_mid"].notna()
+        matched_swaps += int(matched.sum())
+        aligned = aligned[matched].copy()
+        if aligned.empty:
+            emit(f"Calibration replay {i}/{len(parts)}: {part.name} (0 aligned swaps)")
+            continue
+        path_inc, state = replay_discrete_hedged_lp_chunk(
+            aligned, state=state,
+            capital_usd=float(p["initial_capital_usd"]),
+            lower_multiplier=float(p["lower_multiplier"]),
+            upper_multiplier=float(p["upper_multiplier"]),
+            swap_fee_rate=float(spec.fee_tier_pips) / 1_000_000.0,
+            lp_fee_fraction=1.0,
+            delta_band_fraction_nav=float(h["trigger_residual_delta_fraction_lp_nav"]),
+            hedge_to_zero=str(h["rebalance_target"]).lower() == "zero",
+            hedge_taker_cost_bps=float(h["taker_cost_bps"]),
+            funding_events=calibration_funding,
+            annualized_funding_rate=None,
+            charge_initial_and_final_hedge_costs=bool(h.get("charge_initial_and_final_hedge_costs", True)),
+            boundary_cross_fee_policy=str(p["boundary_cross_fee_policy"]),
+            token0_decimals=spec.token0_decimals,
+            token1_decimals=spec.token1_decimals,
+        )
+        cash = _benchmark_incremental_returns_streaming(path_inc["timestamp"], calibration_benchmark_rates, previous_event_ts)
+        excess = pd.to_numeric(path_inc["net_pnl_inc_usd"]).to_numpy(dtype=float) / float(state.initial_value) - cash
+        days = pd.to_datetime(path_inc["timestamp"], utc=True).dt.floor("D")
+        for day, value in zip(days, excess):
+            daily[day] = daily.get(day, 0.0) + float(value)
+        previous_event_ts = pd.Timestamp(path_inc["timestamp"].iloc[-1])
+        emit(f"Calibration replay {i}/{len(parts)}: {part.name} — {len(aligned):,} aligned swaps")
+
+    if total_swaps == 0 or not state.initialized:
+        raise RuntimeError("Calibration dataset contains no usable swaps")
+    match_rate = matched_swaps / float(total_swaps)
+    if match_rate < 1.0 - float(cfg["validity"]["max_missing_reference_fraction"]):
+        raise RuntimeError(
+            f"Calibration reference alignment failed tolerance: match_rate={match_rate:.6f}"
+        )
+    final_ts, final_adjustment = finalize_streaming_replay(
+        state,
+        hedge_taker_cost_bps=float(h["taker_cost_bps"]),
+        charge_initial_and_final_hedge_costs=bool(h.get("charge_initial_and_final_hedge_costs", True)),
+        fixed_operating_cost_usd=0.0,
+    )
+    final_day = pd.Timestamp(final_ts).floor("D")
+    daily[final_day] = daily.get(final_day, 0.0) + final_adjustment / float(state.initial_value)
+    out = pd.DataFrame({
+        "timestamp": sorted(daily),
+        "excess_return_inc": [daily[d] for d in sorted(daily)],
+    })
+    if len(out) < 10:
+        raise RuntimeError("Streaming calibration replay produced fewer than 10 daily increments")
+    return out
 
 def acquire_v015_inputs(
     cfg: dict,
@@ -330,15 +462,19 @@ def acquire_v015_inputs(
             raise RuntimeError(f"Failed to materialize funding artifact: {funding_path}")
         emit(f"Wrote {funding_path} ({funding_path.stat().st_size:,} bytes)")
 
-    emit("Deriving calibration-only excess-return increments for prospective power")
-    calibration_events = event_frames.get("calibration")
-    if calibration_events is None:
-        emit("Loading materialized calibration event dataset for power-noise replay")
-        calibration_events = read_frame(event_paths["calibration"])
-    increments = derive_calibration_excess_increments(
-        calibration_events, references["calibration"], funding["calibration"], benchmarks["calibration"], cfg
-    )
-    del calibration_events
+    emit("Deriving calibration-only daily excess-return increments with bounded memory")
+    if historical_source == "HYPERSYNC":
+        increments = derive_calibration_excess_increments_from_dataset(
+            event_paths["calibration"], references["calibration"], funding["calibration"], benchmarks["calibration"], cfg, progress=emit
+        )
+    else:
+        calibration_events = event_frames.get("calibration")
+        if calibration_events is None:
+            calibration_events = read_frame(event_paths["calibration"])
+        increments = derive_calibration_excess_increments(
+            calibration_events, references["calibration"], funding["calibration"], benchmarks["calibration"], cfg
+        )
+        del calibration_events
     increments_path=cal_dir / "excess_increments.parquet"
     write_frame(increments, increments_path)
     if not increments_path.exists() or increments_path.stat().st_size == 0:
@@ -398,4 +534,52 @@ def acquire_v015_inputs(
     }
     manifest_path = root / "v015_acquisition_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
+
+
+def finalize_existing_v015_acquisition(cfg: dict, output_root: str | Path = "data") -> dict:
+    """Build/refresh the outcome-blind acquisition manifest from existing artifacts.
+
+    This is used after recovering from an interrupted acquisition where all raw
+    datasets were already downloaded and only derived calibration increments were
+    missing.  It never opens candidate-primary LP P&L.
+    """
+    root=Path(output_root).expanduser().resolve()
+    cal_dir=root/"calibration"; cand_dir=root/"candidate"; raw_dir=root/"raw"
+    outputs=[
+        raw_dir/"calibration_events.parquet", raw_dir/"candidate_events.parquet",
+        cal_dir/"eth_reference.parquet", cand_dir/"eth_reference.parquet",
+        cal_dir/"aave_base_usdc_apy.parquet", cand_dir/"aave_base_usdc_apy.parquet",
+        cal_dir/"hyperliquid_eth_funding.parquet", cand_dir/"hyperliquid_eth_funding.parquet",
+        cal_dir/"excess_increments.parquet",
+    ]
+    missing=[str(p) for p in outputs if not p.exists() or artifact_size(p)<=0]
+    if missing:
+        raise RuntimeError("Cannot finalize acquisition; missing/empty artifacts: "+", ".join(missing))
+    historical_source=str(cfg.get("historical_data",{}).get("event_source","RPC")).upper()
+    cal_start,cal_end=_window(cfg,"calibration_window"); cand_start,cand_end=_window(cfg,"candidate_primary_window")
+    windows={}
+    for name,start,end in [("calibration",cal_start,cal_end),("candidate",cand_start,cand_end)]:
+        ds=raw_dir/f"{name}_events.parquet"; success=ds/"_SUCCESS.json"
+        meta=json.loads(success.read_text(encoding="utf-8")) if success.exists() else {}
+        windows[name]={"start":start.isoformat(),"end":end.isoformat(),"from_block":meta.get("from_block"),"to_block":meta.get("to_block")}
+    sources={
+        "bulk_historical_source":historical_source,
+        "pool_events":"Envio HyperSync Base / Uniswap v3 pool logs" if historical_source=="HYPERSYNC" else "Base JSON-RPC / Uniswap v3 pool logs",
+        "reference":"Binance public ETHUSDC aggregate-trade + 5m-kline archives",
+        "benchmark":"Aave v3 Base initial reserve state via RPC + ReserveDataUpdated via Envio HyperSync" if historical_source=="HYPERSYNC" else "Aave v3 Base on-chain ReserveDataUpdated + historical data-provider state via RPC",
+        "funding":"Hyperliquid public fundingHistory info endpoint",
+        "rpc_role":"state_validation_and_block_boundaries_only" if historical_source=="HYPERSYNC" else "historical_logs_and_state",
+    }
+    if historical_source=="HYPERSYNC":
+        h=cfg.get("historical_data",{}).get("hypersync",{})
+        sources["hypersync_url"]=h.get("url")
+        sources["hypersync_chain_id"]=h.get("require_chain_id")
+    manifest={
+        "schema_version":3,"experiment_id":cfg["experiment_id"],"spec_sha256":canonical_hash(cfg),
+        "outcome_blind":True,"candidate_primary_pnl_opened":False,"windows":windows,"sources":sources,
+        "outputs":{p.relative_to(root).as_posix():_artifact_meta(p) for p in outputs},
+        "recovered_from_existing_artifacts":True,
+    }
+    path=root/"v015_acquisition_manifest.json"; path.write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     return manifest

@@ -55,7 +55,7 @@ def test_hypersync_acquisition_skips_rpc_log_probe(tmp_path, monkeypatch):
         "mid": [3000.0], "alignment_eligible": [True], "regime_eligible": [True],
     }))
     monkeypatch.setattr(acquire, "fetch_funding_history", lambda *a, **k: pd.DataFrame({"timestamp": [pd.Timestamp("2025-07-01T00:00:00Z")], "funding_rate": [0.0]}))
-    monkeypatch.setattr(acquire, "derive_calibration_excess_increments", lambda *a, **k: pd.DataFrame({"timestamp": [pd.Timestamp("2025-07-01T00:00:00Z")], "excess_return_inc": [0.0]}))
+    monkeypatch.setattr(acquire, "derive_calibration_excess_increments_from_dataset", lambda *a, **k: pd.DataFrame({"timestamp": [pd.Timestamp("2025-07-01T00:00:00Z")], "excess_return_inc": [0.0]}))
 
     def fake_write(df, path):
         path = Path(path)

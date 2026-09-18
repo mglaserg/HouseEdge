@@ -7,6 +7,8 @@ from houseedge.cli import app
 
 
 def test_write_frame_materializes_nonempty_parquet(tmp_path):
+    import pytest
+    pytest.importorskip("pyarrow")
     p=write_frame(pd.DataFrame({'x':[1,2]}), tmp_path/'x.parquet')
     assert p.exists()
     assert p.stat().st_size>0

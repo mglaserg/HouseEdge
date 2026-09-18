@@ -36,7 +36,7 @@ hedge:
   charge_initial_and_final_hedge_costs: true
 inference:
   stationary_bootstrap_reps: 500
-  stationary_bootstrap_mean_block_swaps: 100
+  stationary_bootstrap_mean_block_days: 5
   confidence_level: 0.95
 benchmark:
   annual_excess_return_hurdle: 0.05

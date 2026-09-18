@@ -1,11 +1,11 @@
-# HouseEdge LP v0.2.4
+# HouseEdge LP v0.2.6
 
-> **v0.2.4 acquisition portability:** Parquet writes now preserve Ethereum integers wider than signed int64 (for example Uniswap `sqrtPriceX96` and liquidity) as lossless decimal strings, avoiding native C-long overflow on Lubuntu/Arrow builds.
+> **v0.2.6 bounded-memory calibration recovery:** HouseEdge can now derive the missing calibration power series directly from the already-downloaded partitioned Base event dataset, carrying LP/hedge state across chunks without loading six months of events into RAM. `calibrate-design` also streams the partitioned candidate event history instead of materializing it all at once.
 
 
 HouseEdge is the crypto/DEX “be the casino” research project: earn compensation for warehousing risk instead of relying on directional forecasts. **HouseEdge LP** is the first sleeve.
 
-v0.2.4 keeps HyperSync as the bulk Base history source but makes Experiment 001 acquisition bounded-memory and resumable. Multi-month Uniswap event windows are fetched in block chunks and checkpointed immediately to partitioned Parquet datasets, so a Lubuntu OOM kill or network interruption cannot erase the completed work. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
+v0.2.6 keeps HyperSync as the bulk Base history source and makes both acquisition **and v0.15 calibration** bounded-memory. Multi-month Uniswap event windows are checkpointed to partitioned Parquet; calibration replays those partitions sequentially, produces UTC-daily excess-return increments for power analysis, and streams candidate Gate-0/JIT/capacity diagnostics. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
 
 ### HyperSync transport resilience
 
@@ -20,7 +20,7 @@ Counterparty -> Compensation -> Costs -> Falsifier -> EdgeLab -> Build
 
 A KILL is a successful research outcome. A measurement failure is VOID, not KILL. Range optimization cannot rescue a primary KILL.
 
-## What changed in v0.2.3
+## What changed through v0.2.6
 
 - Fetch Uniswap history in bounded HyperSync block chunks (`100000` blocks by default) instead of buffering an entire multi-month window in one Python list.
 - Write each completed chunk immediately under `data/raw/{calibration,candidate}_events.parquet/part-*.parquet`, with per-chunk `.done.json` checkpoints and a final `_SUCCESS.json`.
@@ -44,7 +44,7 @@ The v0.1.7/v0.1.8 Binance timestamp and outcome-blind acquisition fixes remain i
 - Precommit Hyperliquid ETH perpetual as the hedge venue, 5.0 bp taker+slippage cost, 1-hour funding cadence, 5% NAV delta trigger, and rebalance-to-zero policy.
 - Precommit Gate-0 variable friction at 2.5%/yr plus $100/yr fixed cost.
 - Change the primary historical fair-value convention to Binance spot ETH/USDC **last trade at or before the Base block timestamp**, max age 3 seconds. No look-ahead is allowed.
-- Replace the arbitrary 100-swap stationary-bootstrap block with an outcome-blind calibration-derived dependence length. The calibration report selects the block length and freeze verifies that exact value.
+- Replace the arbitrary swap-count stationary-bootstrap block with an outcome-blind calibration-derived **daily** dependence length. Calibration and primary inference both operate on UTC-daily P&L increments; the passing calibration report selects the mean block length in days and freeze verifies that exact value.
 - Add `houseedge prepare-freeze` to apply only the passing calibration report's selected dates and bootstrap block length to the YAML.
 - Historical trade-tape reference inputs may now provide `price` or `last_trade` instead of bid/ask midpoint columns.
 
@@ -93,7 +93,15 @@ data/raw/calibration_events.parquet/
   _SUCCESS.json
 ```
 
-If the process is interrupted, rerun the same command. Completed chunks are reused automatically.
+If the process is interrupted during the raw backfill, rerun the same command. Completed chunks are reused automatically.
+
+If the raw event/reference/Aave/funding files are already complete but an older release died at `Loading materialized calibration event dataset for power-noise replay`, **do not redownload them**. v0.2.6 adds a recovery command:
+
+```bash
+uv run houseedge derive-calibration-increments
+```
+
+It streams `data/raw/calibration_events.parquet/` partition-by-partition, writes `data/calibration/excess_increments.parquet`, rebuilds the outcome-blind acquisition manifest from the existing artifacts, and marks `data/v015_acquisition_status.json` `COMPLETE`.
 
 `fetch-calibration-data` does **not** use your Alchemy endpoint for the multi-month Uniswap/Aave log scan when `historical_data.event_source: HYPERSYNC` (the Experiment 001 default).
 
@@ -120,11 +128,11 @@ Candidate-primary LP P&L is **not** computed by this command. Only the separate 
 
 ```bash
 uv run houseedge calibrate-design \
-  --calibration-increments data/calibration/excess_increments.parquet \
-  --calibration-reference data/calibration/eth_reference.parquet \
-  --candidate-reference data/candidate/eth_reference.parquet \
-  --candidate-events data/raw/candidate_events.parquet \
-  --benchmark-rates data/candidate/aave_base_usdc_apy.parquet \
+  data/calibration/excess_increments.parquet \
+  data/calibration/eth_reference.parquet \
+  data/candidate/eth_reference.parquet \
+  data/raw/candidate_events.parquet \
+  data/candidate/aave_base_usdc_apy.parquet \
   --output runs/v015_calibration
 ```
 
@@ -139,7 +147,7 @@ houseedge prepare-freeze \
   --calibration-report runs/v015_calibration/calibration_report.json
 ```
 
-This writes only the exact candidate-window `start` / `end`, the calibration-derived stationary-bootstrap mean block length, and `status: READY_TO_FREEZE`. Freeze verifies that all other calibration assumptions still hash to the passing report. Changing the hedge venue, costs, power settings, regime rules, benchmark, reference convention, or capacity hurdle requires a new calibration run.
+This writes only the exact candidate-window `start` / `end`, the calibration-derived stationary-bootstrap mean block length **in days**, and `status: READY_TO_FREEZE`. Freeze verifies that all other calibration assumptions still hash to the passing report. Changing the hedge venue, costs, power settings, regime rules, benchmark, reference convention, or capacity hurdle requires a new calibration run.
 
 ### 5. Seal the prior prediction
 

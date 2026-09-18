@@ -891,7 +891,7 @@ wheels = [
 
 [[package]]
 name = "houseedge-lp"
-version = "0.1.7"
+version = "0.2.6"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

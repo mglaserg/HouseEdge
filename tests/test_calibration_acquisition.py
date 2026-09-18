@@ -22,6 +22,6 @@ def test_calibration_increments_are_derived_without_candidate_outcome():
     bench=pd.DataFrame({"timestamp":[start-pd.Timedelta(hours=1)],"apy":[0.04]})
     cfg=load_yaml("configs/experiment_001.yaml")
     out=derive_calibration_excess_increments(swaps,ref,funding,bench,cfg)
-    assert len(out)>100
+    assert len(out)>=2
     assert set(out.columns)=={"timestamp","excess_return_inc"}
     assert out["excess_return_inc"].notna().all()

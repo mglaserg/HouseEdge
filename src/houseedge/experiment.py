@@ -131,7 +131,8 @@ def run_experiment(
         benchmark_window_return,benchmark_ann=time_weighted_apy_return(benchmark_rates,start,end)
 
     inf=cfg["inference"]
-    boot_sums=stationary_bootstrap_sums(path["net_pnl_inc_usd"].to_numpy(),int(inf["stationary_bootstrap_reps"]),float(inf["stationary_bootstrap_mean_block_swaps"]))
+    daily_pnl=path.set_index("timestamp")["net_pnl_inc_usd"].resample("1D").sum().to_numpy(dtype=float)
+    boot_sums=stationary_bootstrap_sums(daily_pnl,int(inf["stationary_bootstrap_reps"]),float(inf["stationary_bootstrap_mean_block_days"]))
     boot_returns=boot_sums/summary.initial_capital_usd
     annual_factor=365.0/summary.duration_days
     boot_ann=np.where(boot_returns>-1,(1+boot_returns)**annual_factor-1,-1.0)

@@ -217,3 +217,142 @@ def replay_discrete_hedged_lp(
     sharpe=float(np.sqrt(365)*daily.mean()/daily.std(ddof=1)) if len(daily)>1 and daily.std(ddof=1)>0 else float("nan")
     summary=ReplaySummary(initial_value,ending_lp,lp_inventory,cum_fee,cum_hedge_price,cum_funding,cum_cost,fixed_operating_cost_usd,net,ret,ann,sharpe,hedge_trades,len(path),boundary_count,duration_days)
     return path,summary
+
+
+@dataclass
+class StreamingReplayState:
+    """Carry exact discrete-hedge LP state across partitioned event chunks."""
+    initialized: bool = False
+    lower: float = 0.0
+    upper: float = 0.0
+    liquidity: float = 0.0
+    initial_value: float = 0.0
+    hedge_units: float = 0.0
+    prev_ref: float = 0.0
+    prev_pool: float = 0.0
+    prev_ts: pd.Timestamp | None = None
+    prev_lp_value: float = 0.0
+    swaps_used: int = 0
+    last_ts: pd.Timestamp | None = None
+
+
+def replay_discrete_hedged_lp_chunk(
+    aligned_swaps: pd.DataFrame,
+    *,
+    state: StreamingReplayState | None = None,
+    capital_usd: float,
+    lower_multiplier: float,
+    upper_multiplier: float,
+    swap_fee_rate: float,
+    lp_fee_fraction: float = 1.0,
+    delta_band_usd: float | None = None,
+    delta_band_fraction_nav: float | None = None,
+    hedge_to_zero: bool = True,
+    hedge_taker_cost_bps: float,
+    funding_events: pd.DataFrame | None = None,
+    annualized_funding_rate: float | None = None,
+    charge_initial_and_final_hedge_costs: bool = True,
+    boundary_cross_fee_policy: str = "zero",
+    token0_decimals: int = 18,
+    token1_decimals: int = 6,
+) -> tuple[pd.DataFrame, StreamingReplayState]:
+    """Replay one aligned swap chunk while preserving state across chunks.
+
+    No final hedge liquidation is charged here. Call
+    :func:`finalize_streaming_replay` once after the last chunk.
+    """
+    st = state or StreamingReplayState()
+    x = aligned_swaps.dropna(subset=["ref_mid"]).copy()
+    if x.empty:
+        return pd.DataFrame(columns=["timestamp", "net_pnl_inc_usd"]), st
+    x = x.sort_values(["timestamp", "block_number", "log_index"]).reset_index(drop=True)
+    x["timestamp"] = pd.to_datetime(x["timestamp"], utc=True)
+    if delta_band_fraction_nav is None and delta_band_usd is None:
+        raise ValueError("provide delta_band_fraction_nav or delta_band_usd")
+    if funding_events is not None:
+        funding_events = funding_events.copy()
+        funding_events["timestamp"] = pd.to_datetime(funding_events["timestamp"], utc=True)
+        if "funding_rate" not in funding_events:
+            raise ValueError("funding events require funding_rate per payment interval")
+        funding_events = funding_events.sort_values("timestamp")
+
+    rows=[]
+    for row in x.itertuples(index=False):
+        ref_price=float(row.ref_mid)
+        pool_price=_pool_price(row,token0_decimals,token1_decimals)
+        ts=pd.Timestamp(row.timestamp)
+        first_global = not st.initialized
+        if first_global:
+            st.lower=pool_price*lower_multiplier
+            st.upper=pool_price*upper_multiplier
+            st.liquidity=liquidity_for_capital(capital_usd,ref_price,st.lower,st.upper,token0_decimals,token1_decimals)
+            a0_0,a1_0=position_amounts(st.liquidity,pool_price,st.lower,st.upper,token0_decimals,token1_decimals)
+            st.initial_value=a0_0*ref_price+a1_0
+            st.hedge_units=-a0_0
+            st.prev_ref=ref_price
+            st.prev_pool=pool_price
+            st.prev_ts=ts
+            st.prev_lp_value=st.initial_value
+            st.initialized=True
+
+        a0,a1=position_amounts(st.liquidity,pool_price,st.lower,st.upper,token0_decimals,token1_decimals)
+        lp_value=a0*ref_price+a1
+        lp_inc=0.0 if first_global else lp_value-st.prev_lp_value
+        hedge_price_inc=0.0 if first_global else st.hedge_units*(ref_price-st.prev_ref)
+        if not first_global and funding_events is not None:
+            funding_inc=_funding_for_interval(funding_events,st.prev_ts,ts,st.hedge_units,ref_price)
+        elif not first_global and annualized_funding_rate is not None:
+            dt_years=max((ts-st.prev_ts).total_seconds(),0.0)/(365.0*24*3600)
+            funding_inc=(-st.hedge_units)*ref_price*float(annualized_funding_rate)*dt_years
+        else:
+            funding_inc=0.0
+
+        in_range=st.lower < pool_price < st.upper
+        prev_in_range=st.lower < st.prev_pool < st.upper
+        boundary_cross=(in_range != prev_in_range) if not first_global else False
+        active_liq=float(row.liquidity)
+        fee_inc=_fee_usd(row, swap_fee_rate, lp_fee_fraction, st.liquidity, active_liq, in_range, boundary_cross, boundary_cross_fee_policy)
+
+        target=-a0
+        error_units=target-st.hedge_units
+        band_usd = float(delta_band_fraction_nav)*max(lp_value,1e-12) if delta_band_fraction_nav is not None else float(delta_band_usd)
+        trade_units=0.0; trade_cost=0.0
+        if abs(error_units)*ref_price > band_usd:
+            if hedge_to_zero:
+                new_hedge=target
+            else:
+                band_units=band_usd/max(ref_price,1e-12)
+                new_hedge=target-math.copysign(band_units,error_units)
+            trade_units=new_hedge-st.hedge_units
+            trade_cost=abs(trade_units)*ref_price*hedge_taker_cost_bps/1e4
+            st.hedge_units=new_hedge
+
+        initial_cost=0.0
+        if first_global and charge_initial_and_final_hedge_costs:
+            initial_cost=abs(st.hedge_units)*ref_price*hedge_taker_cost_bps/1e4
+        net_inc=lp_inc+fee_inc+hedge_price_inc+funding_inc-trade_cost-initial_cost
+        rows.append({"timestamp":ts,"net_pnl_inc_usd":net_inc})
+
+        st.prev_ref=ref_price
+        st.prev_pool=pool_price
+        st.prev_ts=ts
+        st.prev_lp_value=lp_value
+        st.last_ts=ts
+        st.swaps_used += 1
+    return pd.DataFrame(rows), st
+
+
+def finalize_streaming_replay(
+    state: StreamingReplayState,
+    *,
+    hedge_taker_cost_bps: float,
+    charge_initial_and_final_hedge_costs: bool = True,
+    fixed_operating_cost_usd: float = 0.0,
+) -> tuple[pd.Timestamp, float]:
+    """Return the final close/fixed-cost adjustment for a streaming replay."""
+    if not state.initialized or state.last_ts is None:
+        raise ValueError("cannot finalize an empty streaming replay")
+    adjustment = -float(fixed_operating_cost_usd)
+    if charge_initial_and_final_hedge_costs:
+        adjustment -= abs(state.hedge_units)*state.prev_ref*hedge_taker_cost_bps/1e4
+    return state.last_ts, float(adjustment)

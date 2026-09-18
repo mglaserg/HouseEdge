@@ -1,3 +1,13 @@
+# v0.2.6
+
+- Add `houseedge derive-calibration-increments` to recover from a completed HyperSync backfill without redownloading any Base, Binance, Aave, or Hyperliquid history.
+- Replace the six-month in-memory calibration replay with a stateful partition-by-partition replay that carries LP inventory, hedge state, funding intervals, and final hedge close across Parquet chunks.
+- Aggregate calibration power noise to UTC daily excess-return increments, matching the intended dependent daily P&L process instead of treating raw swaps as independent observations.
+- Make `calibrate-design` process partitioned candidate event history in bounded memory for reference alignment, Gate-0 economics, JIT diagnostics, and capacity analysis.
+- Switch prospective and primary stationary-bootstrap inference to calibration-selected mean block length in **days** rather than swaps.
+- Add recovery finalization: after the missing increments are derived, HouseEdge verifies all v0.15 artifacts, rebuilds the outcome-blind manifest, and marks acquisition `COMPLETE` without opening candidate-primary P&L.
+- No candidate-primary hedged LP outcome is opened by this release.
+
 # v0.2.5
 
 - Chunk Aave v3 Base `ReserveDataUpdated` HyperSync history using the same bounded 100k-block windows as Uniswap acquisition.
