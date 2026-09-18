@@ -10,6 +10,8 @@ def test_load_dotenv_loads_values_and_preserves_existing(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("BASE_RPC_URL", "already-set")
+    monkeypatch.delenv("ENVIO_API_TOKEN", raising=False)
+    monkeypatch.delenv("OTHER_VALUE", raising=False)
     loaded = load_dotenv(env)
     assert loaded == env
     assert __import__("os").environ["BASE_RPC_URL"] == "already-set"

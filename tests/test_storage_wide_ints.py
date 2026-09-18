@@ -31,7 +31,7 @@ def test_parquet_safe_frame_handles_sparse_wide_integer_columns():
     df = pd.DataFrame({"event": ["Swap", "Mint"], "liquidity": [huge, None]})
     safe = parquet_safe_frame(df)
     assert safe.loc[0, "liquidity"] == str(huge)
-    assert safe.loc[1, "liquidity"] is None
+    assert pd.isna(safe.loc[1, "liquidity"])
 
 
 def test_write_frame_roundtrips_evm_wide_ints_when_pyarrow_available(tmp_path):

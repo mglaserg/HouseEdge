@@ -27,7 +27,8 @@ def test_streaming_replay_matches_batch_exactly():
     batch,_=replay_discrete_hedged_lp(aligned,**kw)
     state=None; pieces=[]
     chunk_kw={k:v for k,v in kw.items() if k!="fixed_operating_cost_usd"}
-    for chunk in np.array_split(aligned,7):
+    for row_idx in np.array_split(np.arange(len(aligned)),7):
+        chunk=aligned.iloc[row_idx]
         inc,state=replay_discrete_hedged_lp_chunk(chunk,state=state,**chunk_kw)
         pieces.append(inc)
     streamed=pd.concat(pieces,ignore_index=True)
