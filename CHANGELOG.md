@@ -4,6 +4,9 @@
 - Document the outcome-blind calibration/primary boundary, experiment state machine, package ownership, storage contracts, verification baseline, and pre-freeze specification consistency checks.
 - Link the project documentation set from the README.
 - Add a regression test that requires the canonical documentation set and verifies its local Markdown links.
+- Reconcile Experiment 001's stale prose/tests with the already-configured Binance ETH/USDT backward last-trade reference without changing the config or calibration-basis hash.
+- Normalize future-markout as-of joins to UTC nanoseconds, matching primary alignment and restoring pandas 3 timestamp-unit portability.
+- Emit the acquisition output root as a non-wrapping plain-text line for reliable logs and CLI assertions.
 
 # v0.2.6
 

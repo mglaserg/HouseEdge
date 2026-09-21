@@ -15,7 +15,7 @@
 3. **Gate 0:** compute fee capture and predictable LVR on the same hypothetical concentrated-liquidity position. Use mean realized variance `E[sigma^2]`, never `(E[sigma])^2`.
 4. **Protocol fees:** read packed `slot0.feeProtocol` at the block preceding the sample and replay every `SetFeeProtocol` event. No static LP fee-share assumption.
 5. **JIT diagnostic:** detect short-lived Mint/Burn liquidity (<=3 blocks by default) and quantify its overlap with active liquidity. This is a diagnostic, not an assertion that pool events uniquely identify economic NFT positions.
-6. **Reference convention:** primary reference is the last non-stale CEX bid/ask midpoint at or before the Base block timestamp. No look-ahead; alternative alignments are sensitivity diagnostics only.
+6. **Reference convention:** primary reference is the last non-stale Binance spot ETH/USDT trade at or before the Base block timestamp, with the configured three-second maximum age. No look-ahead; alternative alignments are sensitivity diagnostics only.
 7. **Seal prediction:** expected point estimate, CI width, capacity, and GO/KILL prediction are hashed before primary replay.
 
 ## Frozen decision rule once v0.15 passes

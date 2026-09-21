@@ -6,8 +6,13 @@ import pandas as pd
 
 def _future_mid(reference: pd.DataFrame, targets: pd.Series, tolerance_seconds: float) -> np.ndarray:
     r=reference[["timestamp","mid"]].copy().sort_values("timestamp")
-    r["timestamp"]=pd.to_datetime(r["timestamp"],utc=True)
-    t=pd.DataFrame({"target":pd.to_datetime(targets,utc=True)}).sort_values("target")
+    # pandas merge_asof requires identical datetime units as well as timezone.
+    # Match the normalization used by backward primary alignment so Parquet or
+    # pandas 3 inputs cannot leave one side at microseconds and the other at
+    # nanoseconds.
+    r["timestamp"]=pd.to_datetime(r["timestamp"],utc=True).astype("datetime64[ns, UTC]")
+    normalized_targets=pd.to_datetime(targets,utc=True).astype("datetime64[ns, UTC]")
+    t=pd.DataFrame({"target":normalized_targets}).sort_values("target")
     m=pd.merge_asof(t,r.rename(columns={"timestamp":"ref_ts","mid":"future_mid"}),left_on="target",right_on="ref_ts",direction="forward",tolerance=pd.to_timedelta(tolerance_seconds,unit="s"))
     return m.sort_index()["future_mid"].to_numpy()
 

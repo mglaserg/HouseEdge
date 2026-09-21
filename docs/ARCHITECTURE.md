@@ -127,7 +127,7 @@ Parts contain normalized `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` rows. Requ
 
 ### Reference data
 
-Reference frames normalize an observation time and a `mid` field even when the configured semantic is last trade. Eligibility flags keep backward-alignment observations separate from lower-frequency regime samples. Primary joins use the latest eligible observation at or before the Base event time and reject observations older than the configured limit.
+Reference frames normalize an observation time and a `mid` field even when the configured semantic is last trade. Eligibility flags keep backward-alignment observations separate from lower-frequency regime samples. Primary joins use the latest eligible observation at or before the Base event time and reject observations older than the configured limit. Both backward primary alignment and forward markout diagnostics canonicalize join keys to UTC nanoseconds so pandas/Parquet timestamp-resolution differences cannot change join behavior.
 
 ### Funding and benchmark data
 

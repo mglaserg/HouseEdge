@@ -238,7 +238,9 @@ def fetch_calibration_data_cmd(
         "cwd":str(Path.cwd()),
         "started_at":datetime.now(timezone.utc).isoformat(),
     },indent=2),encoding="utf-8")
-    print(f"[bold]HouseEdge acquisition output:[/bold] {resolved_root}")
+    # Keep the absolute path on one plain-text line for logs and automation.
+    # Rich may wrap long Windows paths even under Typer's test runner.
+    typer.echo(f"HouseEdge acquisition output: {resolved_root}")
     historical_source=str(cfg.get("historical_data",{}).get("event_source","RPC")).upper()
     if historical_source == "HYPERSYNC":
         token_env=cfg.get("historical_data",{}).get("hypersync",{}).get("api_token_env","ENVIO_API_TOKEN")

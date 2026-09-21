@@ -39,15 +39,16 @@ Status vocabulary:
 
 ### Scope
 
+- acquire or restore the v0.15 artifact tree — **BLOCKED in this checkout: no artifacts or provider credentials**;
 - verify calibration/candidate artifact completeness and source provenance;
 - verify actual backward merge coverage at the configured staleness limit;
-- resolve ETHUSDT/ETHUSDC naming and last-trade/midpoint specification drift;
+- resolve ETHUSDT/ETHUSDC naming and last-trade/midpoint specification drift — **DONE**;
 - run prospective power on separate calibration daily excess increments;
 - select the dependence block length from calibration only;
 - run candidate-window regime, Gate 0, JIT, and passive-capacity diagnostics without primary replay;
 - produce a reproducible calibration report whose basis hash matches the config;
 - classify the design `PASS` or `FAIL` without treating `PASS` as evidence of edge.
-- restore a green test baseline for reference naming, timestamp-unit portability, and cross-platform CLI output assertions.
+- restore a green test baseline for reference naming, timestamp-unit portability, and cross-platform CLI output assertions — **DONE (50 passed)**.
 
 ### Gate
 

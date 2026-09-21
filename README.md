@@ -52,7 +52,7 @@ The v0.1.7/v0.1.8 Binance timestamp and outcome-blind acquisition fixes remain i
 - Precommit the calibration window to 2025-07-01..2025-12-31 and the candidate primary window to 2026-01-01..2026-08-31.
 - Precommit Hyperliquid ETH perpetual as the hedge venue, 5.0 bp taker+slippage cost, 1-hour funding cadence, 5% NAV delta trigger, and rebalance-to-zero policy.
 - Precommit Gate-0 variable friction at 2.5%/yr plus $100/yr fixed cost.
-- Change the primary historical fair-value convention to Binance spot ETH/USDC **last trade at or before the Base block timestamp**, max age 3 seconds. No look-ahead is allowed.
+- Change the primary historical fair-value convention to Binance spot ETH/USDT **last trade at or before the Base block timestamp**, max age 3 seconds. No look-ahead is allowed.
 - Replace the arbitrary swap-count stationary-bootstrap block with an outcome-blind calibration-derived **daily** dependence length. Calibration and primary inference both operate on UTC-daily P&L increments; the passing calibration report selects the mean block length in days and freeze verifies that exact value.
 - Add `houseedge prepare-freeze` to apply only the passing calibration report's selected dates and bootstrap block length to the YAML.
 - Historical trade-tape reference inputs may now provide `price` or `last_trade` instead of bid/ask midpoint columns.
@@ -203,7 +203,7 @@ Otherwise the result is KILL or VOID as appropriate.
 
 30s / 60s / 5m markouts remain **flow-quality diagnostics only**. They are not LVR and are never subtracted from fees to form the primary P&L statistic.
 
-The primary historical reference is Binance spot ETH/USDC trade tape. The contemporaneous value is the last non-stale trade at or before the Base block timestamp (max age 3 seconds); no later trade can be used. Alternative midpoint/composite references are sensitivity diagnostics only.
+The primary historical reference is Binance spot ETH/USDT trade tape. The contemporaneous value is the last non-stale trade at or before the Base block timestamp (max age 3 seconds); no later trade can be used. Alternative midpoint/composite references are sensitivity diagnostics only.
 
 ## JIT liquidity
 
