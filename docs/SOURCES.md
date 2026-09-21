@@ -1,6 +1,6 @@
 # Authoritative implementation references
 
-Checked 2026-09-08.
+Checked 2026-09-21.
 
 - Uniswap v3 Base deployments and factory address: https://developers.uniswap.org/docs/protocols/v3/deployments/v3-base-deployments
 - Uniswap v3 fee / protocol-fee concepts: https://developers.uniswap.org/docs/get-started/concepts/fees
@@ -10,6 +10,7 @@ Checked 2026-09-08.
 - Circle native USDC on Base address: https://developers.circle.com/stablecoins/usdc-contract-addresses
 - Binance public historical market-data archive: https://github.com/binance/binance-public-data
 - Binance public market-data-only endpoints: https://github.com/binance/binance-spot-api-docs/blob/master/faqs/market_data_only.md
+- Bybit official public spot trade archive: https://public.bybit.com/spot/ETHUSDT/
 - Hyperliquid `fundingHistory` info endpoint and pagination: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals
 - Aave official Base v3 address book (`POOL`, data provider, assets): https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Base.sol
 - Aave v3 protocol subgraph/rate conventions and historical queries: https://github.com/aave/aave-v3-core/tree/master

@@ -55,10 +55,9 @@ The synthetic demo may write under `runs/demo`; it does not freeze the spec, sea
 - `houseedge hypersync-preflight`;
 - `houseedge discover-pool`;
 - `houseedge fetch-calibration-data`;
-- `scripts/refresh_reference.py`;
-- `scripts/repair_candidate_reference.py`.
+- `houseedge rebuild-references` (also exposed by `scripts/refresh_reference.py`).
 
-These may contact external services or download large archives. Confirm output roots and reuse checkpoints/caches.
+These may contact external services or download large archives. Confirm output roots and reuse checkpoints/caches. `rebuild-references` reuses existing Base event parts and must not invoke HyperSync; it may download Binance and Bybit public archives.
 
 ### Governed state transitions
 

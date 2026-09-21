@@ -1,5 +1,9 @@
 # Unreleased
 
+- Replace the single-Binance primary reference with a deterministic backward-only Binance spot ETHUSDT primary and Bybit spot ETHUSDT fallback.
+- Select the smallest preregistered freshness in `[1, 2, 3, 5, 10]` seconds using calibration coverage only; candidate data can only pass or fail the unchanged 0.5% maximum-missing gate.
+- Add `houseedge rebuild-references` to reuse existing Base event parts, rebuild both reference files, refresh hashes/provenance, and report the out-of-sample validity result without candidate-primary LP P&L or HyperSync downloads.
+- Bind the selected reference policy into calibration reports, basis hashing, and freeze validation, with backward/no-lookahead and outcome-blind regression coverage.
 - Add canonical agent guidance, project status, capability roadmap, architecture, development documentation, and an ADR process modeled on the durable project-memory structure used by VolForge.
 - Document the outcome-blind calibration/primary boundary, experiment state machine, package ownership, storage contracts, verification baseline, and pre-freeze specification consistency checks.
 - Link the project documentation set from the README.

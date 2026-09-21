@@ -4,10 +4,15 @@ import json
 from pathlib import Path
 import pandas as pd
 
-from houseedge.config import canonical_hash, calibration_basis_hash
+from houseedge.config import (
+    assert_reference_policy_selected,
+    calibration_basis_hash,
+    canonical_hash,
+    reference_policy_hash,
+)
 from houseedge.research.alignment import align_reference
 from houseedge.research.benchmark import time_weighted_apy_return
-from houseedge.research.gate0 import gate0_from_tape
+from houseedge.research.gate0 import Gate0Result, gate0_from_tape
 from houseedge.research.jit import jit_dilution_diagnostic
 from houseedge.research.power import prospective_power
 from houseedge.research.bootstrap import estimate_mean_block_length
@@ -26,6 +31,7 @@ def run_design_calibration(
     output_dir: str | Path,
 ) -> dict:
     """Run v0.15 outcome-blind design gates without primary hedged LP P&L."""
+    assert_reference_policy_selected(cfg)
     out=Path(output_dir); out.mkdir(parents=True,exist_ok=True)
     cal=cfg["calibration"]; sample=cfg["sample"]; pos=cfg["position"]
     hcfg=cfg["hedge"]
@@ -120,7 +126,7 @@ def run_design_calibration(
     full_power_pass=full_power.full_go_power>=float(p_cfg["minimum_full_go_power"])
     status="PASS" if all([stat_power_pass,full_power_pass,regimes.passes,gate.passes_economic_screen,capacity_pass]) else "FAIL"
     result={
-        "status":status,"experiment_id":cfg["experiment_id"],"draft_spec_sha256":canonical_hash(cfg),"calibration_basis_sha256":calibration_basis_hash(cfg),
+        "status":status,"experiment_id":cfg["experiment_id"],"draft_spec_sha256":canonical_hash(cfg),"calibration_basis_sha256":calibration_basis_hash(cfg),"reference_policy_sha256":reference_policy_hash(cfg),
         "candidate_window":{"start":start.isoformat(),"end":end.isoformat(),"duration_days":duration_days,"aligned_swaps":int(len(aligned))},
         "benchmark":{"window_return":bench_window,"annualized_return":bench_ann},
         "realized_variance":{"mean_annualized_variance":mean_ann_var},
@@ -248,9 +254,9 @@ def run_design_calibration_from_paths(
     benchmark_rates_path: str | Path, cfg: dict, output_dir: str | Path,
 ) -> dict:
     """Bounded-memory v0.15 calibration for partitioned candidate event history."""
-    from houseedge.data.storage import read_frame
+    assert_reference_policy_selected(cfg)
     from houseedge.data.reference import normalize_reference
-    from houseedge.research.gate0 import Gate0Result
+    from houseedge.data.storage import read_frame
     from houseedge.research.jit import JITSummary
 
     cal_inc=read_frame(calibration_excess_increments_path)
@@ -338,6 +344,6 @@ def run_design_calibration_from_paths(
     jit=JITSummary(matched_short_lived_liquidity=matched_jit_liq,swaps_with_jit_liquidity=int(jit_swaps),total_swaps=int(jit_total),fraction_swaps_with_jit=jit_swaps/max(jit_total,1),mean_jit_share_of_active_liquidity=jit_share_sum/max(jit_total,1),estimated_fraction_swap_fees_to_jit=(jit_fee_num/jit_fee_den if jit_fee_den>0 else None))
     stat_power_pass=detect_power.statistical_power>=float(p_cfg["minimum_statistical_power"]); full_power_pass=full_power.full_go_power>=float(p_cfg["minimum_full_go_power"])
     status="PASS" if all([stat_power_pass,full_power_pass,regimes.passes,gate.passes_economic_screen,capacity_pass]) else "FAIL"
-    result={"status":status,"experiment_id":cfg["experiment_id"],"draft_spec_sha256":canonical_hash(cfg),"calibration_basis_sha256":calibration_basis_hash(cfg),"candidate_window":{"start":first_aligned.isoformat(),"end":last_aligned.isoformat(),"duration_days":duration_days,"aligned_swaps":int(matched_swaps),"daily_observations":int(len(days))},"benchmark":{"window_return":bench_window,"annualized_return":bench_ann},"realized_variance":{"mean_annualized_variance":mean_ann_var},"bootstrap":{"method":method,"selected_mean_block_days":float(selected_mean_block)},"power":{"detectability_at_5pct":detect_power.as_dict(),"full_go_material_alternative":full_power.as_dict(),"statistical_power_pass":stat_power_pass,"full_go_power_pass":full_power_pass},"regime_coverage":regimes.as_dict(),"gate0":gate.as_dict(),"jit":jit.as_dict(),"capacity":{"passes":capacity_pass,"max_expected_annual_excess_profit_usd":max_prize,"minimum_required_usd":float(cfg["capacity"]["minimum_expected_annual_excess_profit_usd"])},"notes":["No primary exact hedged LP P&L is computed by v0.15 calibration.","Calibration power and primary inference use dependent UTC daily P&L increments, not raw swap count.","Candidate event history is processed partition-by-partition to bound memory.","A PASS permits freezing the primary design; it is not evidence that LP edge exists."]}
+    result={"status":status,"experiment_id":cfg["experiment_id"],"draft_spec_sha256":canonical_hash(cfg),"calibration_basis_sha256":calibration_basis_hash(cfg),"reference_policy_sha256":reference_policy_hash(cfg),"candidate_window":{"start":first_aligned.isoformat(),"end":last_aligned.isoformat(),"duration_days":duration_days,"aligned_swaps":int(matched_swaps),"daily_observations":int(len(days))},"benchmark":{"window_return":bench_window,"annualized_return":bench_ann},"realized_variance":{"mean_annualized_variance":mean_ann_var},"bootstrap":{"method":method,"selected_mean_block_days":float(selected_mean_block)},"power":{"detectability_at_5pct":detect_power.as_dict(),"full_go_material_alternative":full_power.as_dict(),"statistical_power_pass":stat_power_pass,"full_go_power_pass":full_power_pass},"regime_coverage":regimes.as_dict(),"gate0":gate.as_dict(),"jit":jit.as_dict(),"capacity":{"passes":capacity_pass,"max_expected_annual_excess_profit_usd":max_prize,"minimum_required_usd":float(cfg["capacity"]["minimum_expected_annual_excess_profit_usd"])},"notes":["No primary exact hedged LP P&L is computed by v0.15 calibration.","Calibration power and primary inference use dependent UTC daily P&L increments, not raw swap count.","Candidate event history is processed partition-by-partition to bound memory.","A PASS permits freezing the primary design; it is not evidence that LP edge exists."]}
     write_frame(capacity,out/"capacity_napkin.csv"); (out/"calibration_report.json").write_text(json.dumps(result,indent=2),encoding="utf-8")
     return result

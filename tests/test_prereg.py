@@ -1,7 +1,7 @@
 import json
 import yaml
 import pytest
-from houseedge.config import calibration_basis_hash
+from houseedge.config import calibration_basis_hash, reference_policy_hash
 from houseedge.prereg import freeze_record, assert_frozen, seal_prediction, register_outcome_look
 
 
@@ -69,3 +69,28 @@ def test_prepare_freeze_applies_only_calibration_selected_fields(tmp_path):
     assert selected["sample"]["start"]==report["candidate_window"]["start"]
     assert selected["inference"]["stationary_bootstrap_mean_block_days"]==23.0
     assert calibration_basis_hash(selected)==report["calibration_basis_sha256"]
+
+
+def test_reference_policy_is_bound_but_report_digest_is_provenance():
+    cfg={
+        "sample":{
+            "primary_reference":"MULTI_VENUE_SPOT_ETHUSDT_LAST_TRADE",
+            "primary_alignment":{"direction":"backward","max_age_seconds":2.0},
+            "reference_policy":{
+                "method":"priority_fallback",
+                "venues":[{"id":"binance_spot"},{"id":"bybit_spot"}],
+                "selection_status":"SELECTED_ON_CALIBRATION",
+                "selected_max_age_seconds":2.0,
+                "selection_report_sha256":"first",
+            },
+        },
+        "validity":{"max_missing_reference_fraction":0.005},
+    }
+    basis=calibration_basis_hash(cfg)
+    policy=reference_policy_hash(cfg)
+    cfg["sample"]["reference_policy"]["selection_report_sha256"]="second"
+    assert calibration_basis_hash(cfg)==basis
+    assert reference_policy_hash(cfg)==policy
+    cfg["sample"]["reference_policy"]["venues"].reverse()
+    assert calibration_basis_hash(cfg)!=basis
+    assert reference_policy_hash(cfg)!=policy

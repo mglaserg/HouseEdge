@@ -10,7 +10,7 @@ It is not currently a wallet, transaction broadcaster, automated LP manager, or 
 
 ```text
 External sources
-  HyperSync | Base RPC | Binance archives | Hyperliquid | Aave
+  HyperSync | Base RPC | Binance + Bybit archives | Hyperliquid | Aave
         |
         v
 src/houseedge/data/
@@ -54,7 +54,9 @@ src/houseedge/
     hypersync_base.py   HyperSync client, queries, and Base event decoding
     uniswap_base.py     RPC connection, pool discovery, log/state helpers
     base_rpc.py         block boundaries, resilient range logic, provider preflight
-    binance_public.py   public archive cache and sparse last-trade reference
+    binance_public.py   Binance archive cache and sparse last-trade reference
+    bybit_public.py     Bybit spot archive cache and sparse last-trade reference
+    fair_value.py       calibration-only policy selection and reference rebuild
     hyperliquid.py      funding-history adapter
     aave_base.py        on-chain USDC supply-rate history
     reference.py        reference normalization and prospective collection
@@ -108,7 +110,7 @@ primary preflight VALID
 GO | KILL | VOID
 ```
 
-`calibration_basis_hash` normalizes the fields calibration is allowed to select, then binds every other design assumption. Freeze checks the report, selected fields, prediction seal, and hash identity.
+`calibration_basis_hash` normalizes the fields calibration is allowed to select, then binds every other design assumption, including the selected multi-venue policy. The reference report digest itself is provenance and is excluded to avoid a recursive hash. Freeze checks both the basis hash and the dedicated reference-policy hash, plus selected fields and the prediction seal.
 
 ## Data contracts
 
@@ -127,7 +129,7 @@ Parts contain normalized `Swap`, `Mint`, `Burn`, and `SetFeeProtocol` rows. Requ
 
 ### Reference data
 
-Reference frames normalize an observation time and a `mid` field even when the configured semantic is last trade. Eligibility flags keep backward-alignment observations separate from lower-frequency regime samples. Primary joins use the latest eligible observation at or before the Base event time and reject observations older than the configured limit. Both backward primary alignment and forward markout diagnostics canonicalize join keys to UTC nanoseconds so pandas/Parquet timestamp-resolution differences cannot change join behavior.
+Reference frames normalize an observation time and a `mid` field even though the configured semantic is last trade. At each swap timestamp the policy chooses a fresh backward Binance spot observation, otherwise a fresh backward Bybit spot observation. The smallest passing freshness is selected from the preregistered grid using swap-weighted calibration coverage only. The candidate window cannot change that selection; it only supplies the out-of-sample 99.5% coverage verdict. Eligibility flags keep exact alignment observations separate from lower-frequency regime samples. Both backward primary alignment and forward markout diagnostics canonicalize join keys to UTC nanoseconds so pandas/Parquet timestamp-resolution differences cannot change join behavior.
 
 ### Funding and benchmark data
 
@@ -149,12 +151,23 @@ EVM values can exceed native signed int64. `storage.parquet_safe_frame` serializ
 2. Fetch bounded HyperSync chunks.
 3. Seed and attach historical protocol-fee state.
 4. Write each completed part and checkpoint immediately.
-5. Build sparse Binance references at swap targets plus regime samples.
+5. Build provisional sparse references at swap targets plus regime samples.
 6. Acquire Aave rates and Hyperliquid funding.
 7. Replay the calibration window only to derive daily excess increments.
 8. Verify every output and write the manifest/status file.
 
 Interrupted event acquisition resumes from part checkpoints. A dataset-level success marker is written only after all planned ranges complete.
+
+### Reference feasibility
+
+1. Read swap timestamps only from the existing calibration Base event parts.
+2. Load backward Binance and Bybit spot trades up to the largest preregistered age.
+3. Select the smallest age meeting the fixed 99.5% calibration coverage requirement.
+4. Freeze that venue order and age, then rebuild the calibration reference.
+5. Apply the frozen policy to candidate timestamps solely to pass or fail coverage.
+6. Write both references, hashes, manifest identities, and the feasibility report.
+
+This flow never invokes Base/HyperSync acquisition and never constructs candidate-primary LP P&L.
 
 ### Design calibration
 

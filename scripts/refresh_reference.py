@@ -3,33 +3,34 @@ from __future__ import annotations
 import argparse
 import json
 
-from houseedge.config import load_yaml
-from houseedge.data.acquire import refresh_binance_references
+from houseedge.data.fair_value import rebuild_multi_venue_references
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Rebuild only the Binance calibration/candidate reference files "
-            "from existing HouseEdge event datasets."
+            "Select the reference policy on calibration, rebuild calibration and "
+            "candidate references, and report the fixed coverage gate."
         )
     )
     parser.add_argument("--config", default="configs/experiment_001.yaml")
     parser.add_argument("--output-root", default="data")
     parser.add_argument("--force-downloads", action="store_true")
-    parser.add_argument("--window", choices=("calibration", "candidate", "both"), default="calibration")
+    parser.add_argument("--report", default="runs/v015_reference_feasibility.json")
+    parser.add_argument("--no-apply-selection", action="store_true")
     args = parser.parse_args()
 
-    cfg = load_yaml(args.config)
-    windows = ("calibration", "candidate") if args.window == "both" else (args.window,)
-    result = refresh_binance_references(
-        cfg,
+    result = rebuild_multi_venue_references(
+        config_path=args.config,
         output_root=args.output_root,
+        report_path=args.report,
         force_downloads=args.force_downloads,
-        windows=windows,
+        apply_selection=not args.no_apply_selection,
         progress=lambda msg: print(f"• {msg}", flush=True),
     )
     print(json.dumps(result, indent=2))
+    if result.get("status") != "PASS":
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

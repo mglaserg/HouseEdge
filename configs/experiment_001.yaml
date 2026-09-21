@@ -1,6 +1,6 @@
 experiment_id: HOUSEEDGE-LP-001
 status: CALIBRATION_REQUIRED
-spec_version: 0.2.1
+spec_version: 0.2.2
 registered_at: null
 thesis:
   counterparty: Liquidity-demanding traders whose orders reach the Uniswap v3 pool.
@@ -63,8 +63,29 @@ calibration:
 sample:
   start: null
   end: null
-  primary_reference: BINANCE_SPOT_ETHUSDT
+  primary_reference: MULTI_VENUE_SPOT_ETHUSDT_LAST_TRADE
   primary_reference_symbol: ETHUSDT
+  reference_policy:
+    method: priority_fallback
+    venues:
+    - id: binance_spot
+      symbol: ETHUSDT
+      role: primary
+    - id: bybit_spot
+      symbol: ETHUSDT
+      role: fallback
+    selection_window: calibration_only
+    selection_rule: smallest_predeclared_freshness_meeting_0_995_calibration_coverage
+    freshness_grid_seconds:
+    - 1.0
+    - 2.0
+    - 3.0
+    - 5.0
+    - 10.0
+    selection_status: CALIBRATION_REQUIRED
+    selected_policy: null
+    selected_max_age_seconds: null
+    selection_report_sha256: null
   markout_horizons_seconds:
   - 30
   - 60

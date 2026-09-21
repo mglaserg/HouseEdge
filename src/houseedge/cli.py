@@ -9,7 +9,7 @@ import typer
 from houseedge.env import load_dotenv
 from rich import print
 
-from houseedge.config import load_yaml, PoolSpec
+from houseedge.config import assert_reference_policy_selected, load_yaml, PoolSpec
 from houseedge.data.storage import read_frame, write_frame, artifact_size
 from houseedge.data.reference import collect_coinbase_ticker
 from houseedge.research.gate0 import gate0
@@ -23,6 +23,30 @@ load_dotenv(override=False)
 
 app=typer.Typer(help="HouseEdge LP research CLI — no live execution or wallet signing.")
 DEFAULT_CONFIG="configs/experiment_001.yaml"
+
+
+@app.command("rebuild-references")
+def rebuild_references_cmd(
+    config: str=DEFAULT_CONFIG,
+    output_root: str="data",
+    report: str="runs/v015_reference_feasibility.json",
+    force_downloads: bool=False,
+    apply_selection: bool=True,
+):
+    """Select on calibration, rebuild both references, and check the fixed gate."""
+    from houseedge.data.fair_value import rebuild_multi_venue_references
+
+    result=rebuild_multi_venue_references(
+        config_path=config,
+        output_root=output_root,
+        report_path=report,
+        force_downloads=force_downloads,
+        apply_selection=apply_selection,
+        progress=lambda message: typer.echo(message),
+    )
+    typer.echo(json.dumps(result,indent=2,default=str))
+    if result.get("status") != "PASS":
+        raise typer.Exit(code=2)
 
 @app.command()
 def freeze(
@@ -98,6 +122,7 @@ def derive_calibration_increments_cmd(
     """Resume from downloaded calibration data and derive daily power-noise increments with bounded memory."""
     from houseedge.data.acquire import derive_calibration_excess_increments_from_dataset
     cfg=load_yaml(config); out=Path(output)
+    assert_reference_policy_selected(cfg)
     if out.exists() and out.stat().st_size>0 and not force:
         print(f"[green]Using existing calibration increments:[/green] {out.resolve()}")
         return

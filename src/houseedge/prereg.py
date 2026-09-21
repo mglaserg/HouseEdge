@@ -4,7 +4,12 @@ import hashlib
 import json
 import yaml
 from datetime import datetime, timezone
-from houseedge.config import canonical_hash, calibration_basis_hash, load_yaml
+from houseedge.config import (
+    calibration_basis_hash,
+    canonical_hash,
+    load_yaml,
+    reference_policy_hash,
+)
 
 
 def file_sha256(path: str | Path) -> str:
@@ -34,6 +39,14 @@ def _load_json(path: str | Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _assert_reference_policy_identity(cfg: dict, report: dict) -> None:
+    expected=reference_policy_hash(cfg)
+    if expected is not None and report.get("reference_policy_sha256") != expected:
+        raise RuntimeError(
+            "Current reference policy differs from the calibration report."
+        )
+
+
 
 def apply_calibration_selection(
     config_path: str | Path,
@@ -50,6 +63,7 @@ def apply_calibration_selection(
         raise RuntimeError("Calibration report did not PASS; cannot prepare the spec for freeze.")
     if report.get("calibration_basis_sha256") != calibration_basis_hash(cfg):
         raise RuntimeError("Current design assumptions differ from the calibration report.")
+    _assert_reference_policy_identity(cfg,report)
     candidate=report.get("candidate_window",{})
     block=report.get("bootstrap",{}).get("selected_mean_block_days")
     if not candidate.get("start") or not candidate.get("end") or block is None:
@@ -86,6 +100,7 @@ def freeze_record(
         raise RuntimeError("Calibration report did not PASS; primary experiment cannot be frozen.")
     if report.get("calibration_basis_sha256") != calibration_basis_hash(cfg):
         raise RuntimeError("Current design assumptions differ from the passing calibration report. Re-run v0.15 calibration before freeze.")
+    _assert_reference_policy_identity(cfg,report)
     selected_block = report.get("bootstrap",{}).get("selected_mean_block_days")
     configured_block = cfg.get("inference",{}).get("stationary_bootstrap_mean_block_days")
     if selected_block is None:

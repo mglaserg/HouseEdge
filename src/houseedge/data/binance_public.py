@@ -151,10 +151,13 @@ def load_last_trades_for_targets(symbol: str, target_timestamps, cache_dir: str 
     result_time = np.full(len(targets), -1, dtype=np.int64)
     result_price = np.full(len(targets), np.nan, dtype=float)
     cursor = 0
-    months = _month_starts(targets.iloc[0], targets.iloc[-1])
+    months = _month_starts(
+        targets.iloc[0] - pd.Timedelta(seconds=float(max_age_seconds)),
+        targets.iloc[-1],
+    )
+    carry_t = None; carry_p = None
     for month in months:
         path = download_archive("aggTrades", symbol, month, cache_dir, force=force, base_url=base_url)
-        carry_t = None; carry_p = None
         for chunk in _read_zip_chunks(path, AGG_COLUMNS):
             raw = pd.to_numeric(chunk["timestamp_raw"], errors="coerce")
             price = pd.to_numeric(chunk["price"], errors="coerce")

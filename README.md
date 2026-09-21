@@ -46,13 +46,13 @@ A KILL is a successful research outcome. A measurement failure is VOID, not KILL
 
 The v0.1.7/v0.1.8 Binance timestamp and outcome-blind acquisition fixes remain in force.
 
-## Frozen v0.1.6 design retained
+## Experiment 001 design
 
 - Freeze Experiment 001 to the Base Uniswap v3 WETH/USDC 5 bp pool at `0xd0b53d9277642d899df5c87a3966a349a798f224`.
 - Precommit the calibration window to 2025-07-01..2025-12-31 and the candidate primary window to 2026-01-01..2026-08-31.
 - Precommit Hyperliquid ETH perpetual as the hedge venue, 5.0 bp taker+slippage cost, 1-hour funding cadence, 5% NAV delta trigger, and rebalance-to-zero policy.
 - Precommit Gate-0 variable friction at 2.5%/yr plus $100/yr fixed cost.
-- Change the primary historical fair-value convention to Binance spot ETH/USDT **last trade at or before the Base block timestamp**, max age 3 seconds. No look-ahead is allowed.
+- Use Binance spot ETH/USDT last trade as the primary fair value and Bybit spot ETH/USDT last trade as its deterministic fallback. Both are backward-only. Select the smallest predeclared freshness in `[1, 2, 3, 5, 10]` seconds that reaches 99.5% coverage on calibration only, then use candidate solely for the unchanged out-of-sample 0.5% maximum-missing validity gate.
 - Replace the arbitrary swap-count stationary-bootstrap block with an outcome-blind calibration-derived **daily** dependence length. Calibration and primary inference both operate on UTC-daily P&L increments; the passing calibration report selects the mean block length in days and freeze verifies that exact value.
 - Add `houseedge prepare-freeze` to apply only the passing calibration report's selected dates and bootstrap block length to the YAML.
 - Historical trade-tape reference inputs may now provide `price` or `last_trade` instead of bid/ask midpoint columns.
@@ -104,6 +104,14 @@ data/raw/calibration_events.parquet/
 
 If the process is interrupted during the raw backfill, rerun the same command. Completed chunks are reused automatically.
 
+When the existing Base event parts are present, rebuild both reference files and evaluate the unchanged gate with one command:
+
+```bash
+uv run houseedge rebuild-references
+```
+
+This reuses `data/raw/{calibration,candidate}_events.parquet`, downloads only cached public CEX trade archives as needed, selects freshness using calibration coverage, writes both reference files, and reports candidate coverage out of sample. It never calls HyperSync and never computes candidate-primary LP P&L. After it passes, rerun `derive-calibration-increments --force` so calibration noise uses the selected reference before design calibration.
+
 If the raw event/reference/Aave/funding files are already complete but an older release died at `Loading materialized calibration event dataset for power-noise replay`, **do not redownload them**. v0.2.6 adds a recovery command:
 
 ```bash
@@ -129,7 +137,7 @@ data/raw/candidate_events.parquet
 data/v015_acquisition_manifest.json
 ```
 
-The Binance archive cache is retained under `data/cache/binance/`, so rerunning the command does not redownload existing monthly ZIPs unless `--force-downloads` is supplied.
+The Binance and Bybit archive caches are retained under `data/cache/reference/`, so rerunning the reference command does not redownload existing archives unless `--force-downloads` is supplied.
 
 Candidate-primary LP P&L is **not** computed by this command. Only the separate 2025 calibration window is replayed to estimate the noise/dependence process for prospective power.
 
@@ -203,7 +211,7 @@ Otherwise the result is KILL or VOID as appropriate.
 
 30s / 60s / 5m markouts remain **flow-quality diagnostics only**. They are not LVR and are never subtracted from fees to form the primary P&L statistic.
 
-The primary historical reference is Binance spot ETH/USDT trade tape. The contemporaneous value is the last non-stale trade at or before the Base block timestamp (max age 3 seconds); no later trade can be used. Alternative midpoint/composite references are sensitivity diagnostics only.
+The primary historical reference is the frozen Binance-then-Bybit spot ETH/USDT priority fallback. Every selected trade must be at or before the Base block timestamp; no later trade can be used. Freshness is selected on calibration only from the preregistered grid, and the candidate window may only pass or fail the unchanged 0.5% missingness validity gate.
 
 ## JIT liquidity
 
