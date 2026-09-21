@@ -7,6 +7,15 @@ HouseEdge is the crypto/DEX “be the casino” research project: earn compensat
 
 v0.2.6 keeps HyperSync as the bulk Base history source and makes both acquisition **and v0.15 calibration** bounded-memory. Multi-month Uniswap event windows are checkpointed to partitioned Parquet; calibration replays those partitions sequentially, produces UTC-daily excess-return increments for power analysis, and streams candidate Gate-0/JIT/capacity diagnostics. Alchemy/Base RPC remains only for lightweight block-boundary and historical state reads. The release remains outcome-blind: it deliberately does **not** open the candidate-primary LP outcome.
 
+## Project documentation
+
+- [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — current truth, known gaps, and the next gated objective.
+- [`ROADMAP.md`](ROADMAP.md) — capability milestones from calibration through the primary outcome.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — package boundaries, data flow, state machine, and invariants.
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — setup, verification, command risk classes, and contribution workflow.
+- [`docs/adr/`](docs/adr/) — durable architecture and research-governance decisions.
+- [`AGENTS.md`](AGENTS.md) — operating contract for coding agents and research-governance guardrails.
+
 ### HyperSync transport resilience
 
 Aave Base USDC benchmark history is fetched in the same bounded HyperSync block chunks as the Uniswap history. If an Arrow response is truncated or the transport drops, HouseEdge retries only the affected Aave chunk with exponential backoff rather than restarting the entire multi-month benchmark query.

@@ -1,3 +1,10 @@
+# Unreleased
+
+- Add canonical agent guidance, project status, capability roadmap, architecture, development documentation, and an ADR process modeled on the durable project-memory structure used by VolForge.
+- Document the outcome-blind calibration/primary boundary, experiment state machine, package ownership, storage contracts, verification baseline, and pre-freeze specification consistency checks.
+- Link the project documentation set from the README.
+- Add a regression test that requires the canonical documentation set and verifies its local Markdown links.
+
 # v0.2.6
 
 - Add `houseedge derive-calibration-increments` to recover from a completed HyperSync backfill without redownloading any Base, Binance, Aave, or Hyperliquid history.
